@@ -1,0 +1,23 @@
+# client data never goes to GitHub
+clients/
+data/
+sch3/clients/
+sch3/data/
+ADT1/source/
+ADT1/flattened/
+ADT1/logs/
+ADT1/ADT-1 companies.xlsx
+ADT1/state.json
+Samples/
+logs/
+dumps/archive/
+state.json
+queue.json
+ai.json
+settings.json
+sch3/settings.json
+_backup_*/
+__pycache__/
+*.pyc
+.venv/
+~$*

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Schedule III Builder</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2433;--mute:#667085;--line:#e3e6eb;--acc:#0b4f8a;--ok:#127a3e;--warn:#a15c00;--bad:#b42318;--sec:#fff4e5;--head:#eef4ff;--con:#f3eefe}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#0b2545;color:#fff;padding:10px 18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0 12px 0 0;font-weight:600}header select,header button{font:inherit}
+main{padding:14px 18px;max-width:1400px;margin:auto}
+nav{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}nav button{border:1px solid var(--line);background:#fff;padding:7px 14px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:12px}
+h2{font-size:15px;margin:0 0 8px}h3{font-size:14px;margin:14px 0 4px}
+.mute{color:var(--mute)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+button.p{background:var(--acc);color:#fff;border:0;padding:7px 14px;border-radius:6px;cursor:pointer;font:inherit}
+button.s{background:#fff;border:1px solid var(--line);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+button:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;padding:5px 7px;border:1px solid #cfd4dc;border-radius:5px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top}
+th{background:#f2f4f7;font-weight:600;position:sticky;top:0}td.n,th.n{text-align:right;white-space:nowrap}
+tr.section td{background:var(--sec)}tr.head td{background:var(--head)}tr.contra td{background:var(--con)}
+tr.changed td{background:#f5f9ff}tr.changed td:first-child{box-shadow:inset 3px 0 var(--acc)}
+header .pill{background:#1d3b63;color:#fff}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:#eef0f3}
+.pill.ok{background:#e7f6ec}.pill.bad{background:#fdecea}.pill.warn{background:#fff4e5}
+details>summary{cursor:pointer;font-weight:600;margin:8px 0}
+.log{background:#0f172a;color:#d1e7ff;font:12px Consolas,monospace;padding:10px;border-radius:6px;max-height:220px;overflow:auto;white-space:pre-wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.scroll{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.arrow{color:var(--mute)}.sel{max-width:380px}
+#toast{position:fixed;bottom:16px;right:16px;background:#0b2545;color:#fff;padding:10px 14px;border-radius:6px;display:none;max-width:480px}
+</style></head><body>
+<header><h1>Schedule III Builder</h1>
+<select id="client" onchange="openClient(this.value)"></select>
+<button class="s" onclick="newClient()">+ New client</button>
+<span id="fy" class="pill"></span>
+<span style="flex:1"></span>
+<button class="s" onclick="nextYear()" title="Carry approved mapping into next FY">Start next year</button>
+</header>
+<main>
+<nav id="tabs"></nav>
+<div id="view"></div>
+</main>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);let S={slug:null,data:null,map:null,tab:'tally',choices:{}};
+const TABS=[['tally','1. Tally trial balances'],['uploads','2. Masters & last year'],['mapping','3. Mapping approval'],['setup','4. Setup inputs'],['build','5. Build & tie-out']];
+const inr=v=>{if(v===''||v==null||isNaN(v))return v??'';const n=Math.abs(+v);let [i,d]=n.toFixed(2).split('.');let l=i.slice(-3),o=i.slice(0,-3);if(o)l=o.replace(/\B(?=(\d{2})+(?!\d))/g,',')+','+l;return (v<0?'-':'')+l+'.'+d};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m,ms=3500){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',ms)}
+async function api(path,opt={}){const r=await fetch('/api/'+path,opt);const j=await r.json();if(j&&j.error){toast('Error: '+j.error,7000);throw new Error(j.error)}return j}
+const post=(p,b)=>api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
+async function loadClients(sel){const cs=await api('clients');$('#client').innerHTML='<option value="">Select client...</option>'+cs.map(c=>`<option value="${c.slug}">${esc(c.name)} (FY ${c.fy})</option>`).join('');if(sel){$('#client').value=sel;openClient(sel)}}
+async function newClient(){const name=prompt('Company name (as in MCA)');if(!name)return;const cin=prompt('CIN')||'';const fy=prompt('Financial year (e.g. 2025-26)','2025-26');if(!fy)return;const r=await post('clients',{name,cin,fy});loadClients(r.slug)}
+async function nextYear(){if(!S.slug)return;if(!confirm('Start the next financial year for this client? Approved mapping is kept; this year\'s TB becomes last year.'))return;const r=await post(`client/${S.slug}/nextyear`);toast('Now on FY '+r.fy);loadClients(S.slug)}
+async function openClient(slug){if(!slug)return;S.slug=slug;S.choices={};S.map=null;S.data=await api('client/'+slug);$('#fy').textContent='FY '+S.data.cfg.fy;render()}
+function render(){$('#tabs').innerHTML=TABS.map(([k,l])=>`<button class="${S.tab==k?'on':''}" onclick="S.tab='${k}';render()">${l}</button>`).join('');if(!S.slug){$('#view').innerHTML='<div class="card">Select or create a client to begin.</div>';return}({tally:vTally,uploads:vUploads,mapping:vMapping,setup:vSetup,build:vBuild})[S.tab]()}
+const F=k=>S.data.files[k]?'<span class="pill ok">loaded</span>':'<span class="pill">not yet</span>';
+
+/* ---------- 1 Tally ---------- */
+function vTally(){const c=S.data.cfg,y=+c.fy.slice(0,4);$('#view').innerHTML=`
+<div class="card"><h2>Connect to Tally</h2><p class="mute">Open Tally with both companies loaded. Tally Prime: F1 Help &gt; Settings &gt; Connectivity &gt; Client/Server = Both, port 9000.</p>
+<div class="row">Tally PC <input id="th" value="localhost" size="14"> Port <input id="tp" value="9000" size="6"><button class="s" onclick="listCos()">List open companies</button><span id="costat" class="mute"></span></div></div>
+<div class="grid2">
+${['tb_cy','tb_py'].map(w=>`<div class="card"><h2>${w=='tb_cy'?'Current year':'Previous year'} ${w=='tb_cy'?`FY ${y}-${String(y+1).slice(2)}`:`FY ${y-1}-${String(y).slice(2)}`} ${F(w)}</h2>
+<div class="row">Tally company <select id="co_${w}" class="sel"><option>${esc(w=='tb_cy'?c.tally_company_cy:c.tally_company_py)}</option></select>
+<button class="p" onclick="fetchTB('${w}')">Fetch trial balance</button></div>
+<div class="row mute">or upload a TB file (CSV/Excel: ledger_name, group_name, primary_group, opening_balance, closing_balance; Dr negative) <input type="file" accept=".csv,.xlsx" onchange="up('${w}',this)"></div>
+<div id="st_${w}" class="mute">${S.data.cfg.setup['Net profit as per Tally P&L - '+(w=='tb_cy'?'current':'previous')+' year']!=null?'Net profit per Tally: Rs '+inr(S.data.cfg.setup['Net profit as per Tally P&L - '+(w=='tb_cy'?'current':'previous')+' year']):''}</div></div>`).join('')}
+</div>
+<div class="card"><h2>Roll-forward check</h2><p class="mute">Last year's closing balance against this year's opening, ledger by ledger (balance-sheet ledgers).</p><div id="rf"></div></div>`;rollf()}
+async function listCos(){$('#costat').textContent='Connecting...';try{const cs=await api(`tally/companies?host=${$('#th').value}&port=${$('#tp').value}`);$('#costat').textContent=cs.length+' companies open';for(const w of['tb_cy','tb_py']){const s=$('#co_'+w),cur=s.value;s.innerHTML=cs.map(c=>`<option ${c.name==cur?'selected':''}>${esc(c.name)}</option>`).join('')}}catch(e){$('#costat').textContent='Not connected'}}
+async function fetchTB(w){$('#st_'+w).textContent='Fetching from Tally...';try{const r=await post(`client/${S.slug}/tally`,{which:w,company:$('#co_'+w).value,host:$('#th').value,port:$('#tp').value});$('#st_'+w).innerHTML=`<span class="ok">${r.ledgers} ledgers fetched.</span> Net profit per Tally: Rs ${inr(r.net_profit)}`;S.data=await api('client/'+S.slug);rollf()}catch(e){$('#st_'+w).textContent=''}}
+async function up(kind,inp){const f=inp.files[0];if(!f)return;const r=await api(`client/${S.slug}/upload?kind=${kind}`,{method:'POST',headers:{'X-Filename':encodeURIComponent(f.name)},body:f});toast(r.ledgers?`${r.ledgers} ledgers loaded`:'Saved '+f.name);S.data=await api('client/'+S.slug);render()}
+async function rollf(){const r=await api(`client/${S.slug}/rollforward`);if(r.note){$('#rf').innerHTML='<span class="mute">'+r.note+'</span>';return}
+$('#rf').innerHTML=r.diffs.length?`<p class="bad">${r.diffs.length} ledger(s) do not roll forward. Fix in Tally (or confirm) before building.</p><div class="scroll"><table><tr><th>Ledger</th><th>Group</th><th class="n">LY closing</th><th class="n">CY opening</th><th class="n">Difference</th></tr>${r.diffs.map(d=>`<tr><td>${esc(d.ledger)}</td><td>${esc(d.group)}</td><td class="n">${inr(d.py_closing)}</td><td class="n">${inr(d.cy_opening)}</td><td class="n">${inr(d.difference)}</td></tr>`).join('')}</table></div>`:'<p class="ok">All balance-sheet ledgers roll forward exactly.</p>'}
+
+/* ---------- 2 Uploads ---------- */
+function vUploads(){$('#view').innerHTML=`<div class="grid2">
+<div class="card"><h2>Firm masters</h2>
+<div class="row">Auditor &amp; director master (.xlsx) ${F('auditor')} <input type="file" accept=".xlsx" onchange="up('auditor',this)"></div>
+<div class="row">ROC master company data (.xlsx) ${F('roc')} <input type="file" accept=".xlsx" onchange="up('roc',this)"></div>
+<p class="mute">Only the Auditor, MCA Data and ROC Companies sheets are read. Credential sheets are never opened.</p></div>
+<div class="card"><h2>Last year</h2>
+<div class="row">Signed Schedule III (.xlsx) ${F('ly')} <input type="file" accept=".xlsx" onchange="up('ly',this)"></div>
+<div class="row">Filed AOC-4 (.pdf) ${F('aoc4')} <input type="file" accept=".pdf" onchange="up('aoc4',this)"></div>
+<p class="mute">Used after the build to tie every previous-year figure.</p></div></div>
+<div class="card"><h2>Pick up values from masters</h2><div class="row">AGM date this year <input id="agm" placeholder="DD/MM/YYYY" value="${esc(S.data.cfg.setup['Date of AGM (this year)']||'')}" size="12"><button class="p" onclick="readMasters()">Read masters</button></div><div id="mres"></div></div>`}
+async function readMasters(){const agm=$('#agm').value;const r=await post(`client/${S.slug}/masters`,{agm});const s=S.data.cfg.setup;S.mres=r;
+const ks=Object.keys(r.values).filter(k=>!k.startsWith('_'));const audConflict=r.issues.some(i=>i.startsWith('Auditor differs'));
+$('#mres').innerHTML=(r.issues.length?`<div class="card" style="background:#fff4e5">${r.issues.map(i=>'<div class="warn">&#9888; '+esc(i)+'</div>').join('')}${r.values._roc_auditor?`<div class="mute">ROC master auditor: ${esc(r.values._roc_auditor)} (${esc(r.sources._roc_auditor)})</div>`:''}</div>`:'')+
+`<table><tr><th><input type="checkbox" checked onchange="document.querySelectorAll('.mk').forEach(x=>x.checked=this.checked)"></th><th>Setup field</th><th>From masters</th><th>Currently in Setup</th><th>Source (file / sheet / column / row)</th></tr>${ks.map(k=>`<tr class="${String(s[k]??'')!==String(r.values[k])?'changed':''}"><td><input type="checkbox" class="mk" data-k="${esc(k)}" ${audConflict&&/^(Auditor firm|Auditor FRN|Signing partner|Partner membership)/.test(k)?'':'checked'}></td><td>${esc(k)}</td><td><b>${esc(r.values[k])}</b></td><td class="mute">${esc(s[k]??'')}</td><td class="mute">${esc(r.sources[k])}</td></tr>`).join('')}</table>
+${r.directors.length?`<h3>Directors (MCA Data)</h3><table><tr><th>DIN</th><th>Name</th><th>Designation</th><th>Signs financials</th><th>DSC signer</th></tr>${r.directors.map(d=>`<tr><td>${d.din}</td><td>${esc(d.name)}</td><td>${esc(d.designation)}</td><td>${d.signer?'Yes':''}</td><td>${d.dsc?'Yes':''}</td></tr>`).join('')}</table>`:''}
+<div class="row"><button class="p" onclick="applyMasters()">Use ticked values</button></div>`}
+async function applyMasters(){const r=S.mres,values={},notes={};document.querySelectorAll('.mk:checked').forEach(x=>{const k=x.dataset.k;values[k]=r.values[k];notes[k]=r.sources[k]});const agm=$('#agm').value;if(agm){values['Date of AGM (this year)']=agm;}await post(`client/${S.slug}/setup`,{values,notes});S.data=await api('client/'+S.slug);toast(Object.keys(values).length+' values saved to Setup')}
+
+/* ---------- 3 Mapping ---------- */
+async function vMapping(){if(!S.data.files.tb_cy){$('#view').innerHTML='<div class="card">Fetch the current-year trial balance first.</div>';return}
+$('#view').innerHTML='<div class="card mute">Analysing ledgers...</div>';S.map=await api(`client/${S.slug}/mapping`);drawMapping()}
+function headSel(r){const cur=S.choices[r.ledger]??r.proposed.code;let opts='',sec='';for(const h of S.map.heads){if(h.section!==sec){if(sec)opts+='</optgroup>';sec=h.section;opts+=`<optgroup label="${esc(sec)}">`}opts+=`<option value="${h.code}" ${h.code==cur?'selected':''}>${esc(h.label)}</option>`}
+return `<select class="sel" onchange="const a=this.closest('tr').querySelector('.acc');S.choices[a.dataset.l]=this.value;a.checked=true">${cur?'':'<option value="">-- pick --</option>'}${opts}</optgroup></select>`}
+function drawMapping(){const M=S.map,rows=M.rows;const pend=rows.filter(r=>!r.approved).length;
+let h=`<div class="card"><div class="row"><h2 style="margin:0">Mapping approval</h2><span class="pill ${pend?'warn':'ok'}">${pend} awaiting approval</span><span style="flex:1"></span>Approved by <input id="who" size="16" value="${esc(localStorage.who||'')}"><button class="p" onclick="saveMap()">Save approvals</button></div>
+<p class="mute">Ticked rows are approved. Change the Schedule III head from the dropdown where needed; the change is remembered for this client next year. Colours: <span class="pill" style="background:var(--sec)">section change</span> <span class="pill" style="background:var(--head)">head change</span> <span class="pill" style="background:var(--con)">contra balance</span></p></div>`;
+for(const [k,title,desc] of M.buckets){const rs=rows.filter(r=>r.kind==k);if(!rs.length&&k!='borrow')continue;const np=rs.filter(r=>!r.approved).length;
+const body=`<p class="mute">${esc(desc)}</p>${k=='borrow'?ltBox():''}${rs.length?`<div class="row"><button class="s" onclick="accAll('${k}',true)">Approve all in this section</button></div><div class="scroll"><table><tr><th>OK</th><th>Ledger</th><th>Tally group</th><th class="n">CY Rs</th><th class="n">PY Rs</th><th>Tally default</th><th></th><th>Schedule III head</th><th>Why</th></tr>
+${rs.map(r=>`<tr class="${k}"><td><input type="checkbox" class="acc" data-b="${k}" data-l="${esc(r.ledger)}" ${r.approved?'checked':''}></td><td>${esc(r.ledger)}</td><td>${esc(r.group)}${r.group!=r.primary?`<div class="mute">${esc(r.primary)}</div>`:''}</td><td class="n">${inr(r.cy)}</td><td class="n">${inr(r.py)}</td><td>${esc(r.tally.line)}<div class="mute">${esc(r.tally.label)}</div></td><td class="arrow">&rarr;</td><td>${headSel(r)}</td><td class="mute">${r.warn?`<div class="bad">&#9888; ${esc(r.warn)}</div>`:''}${esc(r.source)}${r.reason?': '+esc(r.reason):''}</td></tr>`).join('')}</table></div>`:''}`;
+h+=`<div class="card"><details ${np||k=='borrow'?'open':''}><summary>${esc(title)} <span class="pill">${rs.length}</span> ${np?`<span class="pill warn">${np} to approve</span>`:''}</summary>${body}</details></div>`}
+$('#view').innerHTML=h}
+function ltBox(){const lt=S.map.lt,ks=Object.keys(lt);return `<div class="row" style="background:#f8fafc;padding:8px;border-radius:6px">Long-term portion of loans (Rs) &nbsp; CY <input id="ltc" value="${lt[ks[0]]||0}" size="14"> &nbsp; PY <input id="ltp" value="${lt[ks[1]]||0}" size="14"><span class="mute">Balance stays short-term. Not moved automatically.</span></div>`}
+function accAll(b,v){document.querySelectorAll(`.acc[data-b="${b}"]`).forEach(x=>x.checked=v)}
+async function saveMap(){const who=$('#who').value.trim();if(!who){toast('Enter your name for the approval record');return}localStorage.who=who;const decisions={};
+document.querySelectorAll('.acc:checked').forEach(x=>{const l=x.dataset.l;const r=S.map.rows.find(r=>r.ledger==l);const code=S.choices[l]??r.proposed.code;if(code)decisions[l]=code});
+const setup={};if($('#ltc')){const ks=Object.keys(S.map.lt);setup[ks[0]]=parseFloat($('#ltc').value.replace(/,/g,''))||0;setup[ks[1]]=parseFloat($('#ltp').value.replace(/,/g,''))||0}
+S.map=await post(`client/${S.slug}/mapping`,{user:who,decisions,setup});S.choices={};S.data=await api('client/'+S.slug);drawMapping();toast(Object.keys(decisions).length+' approvals saved')}
+
+/* ---------- 4 Setup ---------- */
+function vSetup(){const s=S.data.cfg.setup,n=S.data.cfg.setup_notes||{};$('#view').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">Setup inputs</h2><span style="flex:1"></span><button class="p" onclick="saveSetup()">Save</button></div><p class="mute">These feed the Setup sheet that the AOC-4 / MGT-7 filler reads. Labels are fixed.</p>
+<table>${S.data.fields.map(([k,ex,hint])=>ex===null?`<tr><th colspan="3">${esc(k.replace(/-/g,'').trim())}</th></tr>`:`<tr><td style="width:38%">${esc(k)}</td><td><input class="su" data-k="${esc(k)}" value="${esc(s[k]??'')}" style="width:100%"></td><td class="mute" style="width:34%">${esc(n[k]||'')}</td></tr>`).join('')}</table></div>`}
+async function saveSetup(){const values={};document.querySelectorAll('.su').forEach(x=>{let v=x.value.trim();if(/^-?[\d,]+(\.\d+)?$/.test(v)&&!/^0\d/.test(v))v=parseFloat(v.replace(/,/g,''));values[x.dataset.k]=v});await post(`client/${S.slug}/setup`,{values});S.data=await api('client/'+S.slug);toast('Setup saved')}
+
+/* ---------- 5 Build ---------- */
+function vBuild(){$('#view').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">Build Schedule III workbook</h2><span style="flex:1"></span><button class="p" id="bb" onclick="build()">Build</button><button class="s" onclick="location='/api/client/${S.slug}/download'" ${S.data.files.output?'':'disabled'} id="dl">Download Excel</button><button class="s" onclick="api('client/${S.slug}/openfolder').then(r=>toast(r.folder))">Open folder</button></div><p class="mute">Takes 1-3 minutes: every formula is calculated so the AOC-4 filler can read values.</p><div id="blog"></div></div><div id="bres"></div>`;poll()}
+async function build(force){const r=await post(`client/${S.slug}/build`,{force});if(r.state=='blocked'){if(confirm(r.pending.length+' ledger(s) are not yet approved:\n\n'+r.pending.slice(0,15).join('\n')+(r.pending.length>15?'\n...':'')+'\n\nBuild anyway as a draft?'))return build(true);return}poll()}
+async function poll(){const r=await api(`client/${S.slug}/build`);if(!$('#blog'))return;$('#blog').innerHTML=r.state=='idle'?'':`<div class="log">${esc((r.log||[]).join('\n'))}</div>`;$('#bb').disabled=r.state=='running';
+if(r.state=='running'){setTimeout(poll,2000);return}
+if(r.state=='done'){S.data=await api('client/'+S.slug);$('#dl').disabled=false;let h='';
+if(r.checks){h+=`<div class="card"><h2>Checks</h2><table>${r.checks.map(c=>`<tr>${c.map(x=>`<td class="${x=='OK'?'ok':/DIFF|ERROR|CHECK/.test(x)?'bad':''}">${esc(x)}</td>`).join('')}</tr>`).join('')}</table></div>`}
+if(r.ly){h+=`<div class="card"><h2>Tie to last year's signed Schedule III <span class="pill ${r.ly.matched==r.ly.total?'ok':'bad'}">${r.ly.matched} / ${r.ly.total} lines found</span></h2><p class="mute">Unit detected in last year's file: ${esc(r.ly.unit_in_ly)}</p>${r.ly.note?`<p class="warn">&#9888; ${esc(r.ly.note)}</p>`:''}<table><tr><th>Statement</th><th>Line</th><th class="n">PY in new workbook</th><th>In LY signed</th></tr>${r.ly.rows.map(x=>`<tr><td>${x.statement}</td><td>${esc(x.line)}</td><td class="n">${inr(x.py)}</td><td class="${x.found?'ok':'bad'}">${x.found?'Found':'Not found'}</td></tr>`).join('')}</table></div>`}
+if(r.aoc4){h+=r.aoc4.error?`<div class="card bad">AOC-4 PDF could not be read: ${esc(r.aoc4.error)}</div>`:`<div class="card"><h2>Tie to last year's AOC-4 <span class="pill ${r.aoc4.matched==r.aoc4.total?'ok':'warn'}">${r.aoc4.matched} / ${r.aoc4.total} lines found</span></h2><p class="mute">${r.aoc4.fields} fields read from the PDF.</p><table><tr><th>Statement</th><th>Line</th><th class="n">PY (Rs)</th><th>AOC-4 field</th></tr>${r.aoc4.rows.map(x=>`<tr><td>${x.statement}</td><td>${esc(x.line)}</td><td class="n">${inr(x.py_rs)}</td><td class="${x.found?'ok':'bad'}">${x.found?esc(x.aoc4_field):'Not found'}</td></tr>`).join('')}</table></div>`}
+$('#bres').innerHTML=h}}
+loadClients();
+</script></body></html>

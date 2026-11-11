@@ -1,0 +1,93 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mock AOC-4</title></head>
+<body>
+<h1>Form AOC-4 (mock)</h1>
+<div id="guideContainer-rootPanel___guide-item" class="guidePanelNode">
+  <div id="guideContainer-rootPanel-partA___guide-item" class="guidePanelNode">
+    <div class="guideFieldNode"><label class="guideFieldLabel">(a) *Corporate identity number (CIN)</label>
+      <input id="guideContainer-rootPanel-partA-guidetextbox_cin___widget" type="text"></div>
+    <div class="guideFieldNode"><label class="guideFieldLabel">(c) *e-mail ID</label>
+      <input id="guideContainer-rootPanel-partA-guidetextbox_mail___widget" type="text" readonly value="x@y.z"></div>
+    <div class="guideFieldNode"><label class="guideFieldLabel">*Date of Board meeting</label>
+      <input id="guideContainer-rootPanel-partA-guidedatepicker_bm___widget" type="text"></div>
+    <div class="guideFieldNode"><label class="guideFieldLabel">*Nature of financial statements</label>
+      <select id="guideContainer-rootPanel-partA-guidedropdownlist_nat___widget">
+        <option value="">Select</option><option value="A">Adopted Financial statements</option><option value="P">Provisional</option></select></div>
+    <div class="guideFieldNode"><label class="guideFieldLabel">*Whether AGM held</label>
+      <input type="radio" name="agm" id="guideContainer-rootPanel-partA-guideradiobutton_agm__-1_widget" value="Y"><label for="guideContainer-rootPanel-partA-guideradiobutton_agm__-1_widget">Yes</label>
+      <input type="radio" name="agm" id="guideContainer-rootPanel-partA-guideradiobutton_agm__-2_widget" value="N"><label for="guideContainer-rootPanel-partA-guideradiobutton_agm__-2_widget">No</label></div>
+  </div>
+  <div id="guideContainer-rootPanel-bs___guide-item" class="guidePanelNode">
+    <table><thead><tr><th>Particulars</th><th>Figures as at the end of (Current Reporting Period)</th><th>Figures as at the end of (Previous Reporting Period)</th></tr></thead>
+    <tbody><tr><td>(a) Share capital</td>
+      <td><input id="guideContainer-rootPanel-bs-table-Row1-numericbox_sc_cy___widget"></td>
+      <td><input id="guideContainer-rootPanel-bs-table-Row1-numericbox_sc_py___widget" readonly></td></tr>
+    <tr><td>(b) Reserves and surplus</td>
+      <td><input id="guideContainer-rootPanel-bs-table-Row2-numericbox_rs_cy___widget"></td>
+      <td><input id="guideContainer-rootPanel-bs-table-Row2-numericbox_rs_py___widget"></td></tr></tbody></table>
+  </div>
+  <div id="guideContainer-rootPanel-sig___guide-item" class="guidePanelNode"><div id="sigrows"></div></div>
+  <button id="guideContainer-rootPanel-saveguidedraft_copy___widget" type="button">Save</button>
+  <button id="guideContainer-rootPanel-submit___widget" type="button">Submit</button>
+</div>
+<script>
+// Minimal stand-in for AEM's guideBridge model.
+window.clicks = [];
+document.addEventListener('click', e => { if (e.target.tagName === 'BUTTON') clicks.push(e.target.innerText); });
+function Cmp(o) { Object.assign(this, o); this.items = []; }
+Cmp.prototype.add = function (c) { c.parent = this; this.items.push(c); return c; };
+const W = id => document.getElementById(id + '_widget');
+function field(parent, cls, id, name, title, som, extra = {}) {
+  const c = new Cmp({ className: cls, id, name, title, somExpression: som, readOnly: false, enabled: true, visible: true, instanceIndex: 0, ...extra });
+  Object.defineProperty(c, 'value', {
+    get() {
+      if (cls === 'guideRadioButton') { const r = [...document.querySelectorAll(`[id^="${id}-"]`)].find(e => e.checked); return r ? r.value : null; }
+      const el = W(id); if (!el) return c._v ?? null;
+      if (cls === 'guideDatePicker') { const m = el.value.match(/^(\d\d)\/(\d\d)\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : (el.value || null); }
+      return el.value === '' ? null : el.value;
+    },
+    set(v) {
+      if (cls === 'guideRadioButton') { [...document.querySelectorAll(`[id^="${id}-"]`)].forEach(e => e.checked = e.value === v); return; }
+      const el = W(id); if (!el) { c._v = v; return; }
+      if (cls === 'guideDatePicker') { const m = String(v).match(/^(\d{4})-(\d\d)-(\d\d)$/); el.value = m ? `${m[3]}/${m[2]}/${m[1]}` : v; return; }
+      el.value = v;
+    } });
+  return parent.add(c);
+}
+const root = new Cmp({ className: 'guideRootPanel', name: 'rootPanel', id: 'guideContainer-rootPanel__', somExpression: 'guide[0].guide1[0].guideRootPanel[0]' });
+const A = root.add(new Cmp({ className: 'guidePanel', name: 'partA', title: 'Part A - General information', id: 'guideContainer-rootPanel-partA__', somExpression: 'guide[0].guide1[0].guideRootPanel[0].partA[0]' }));
+const S = 'guide[0].guide1[0].guideRootPanel[0].partA[0].';
+field(A, 'guideTextBox', 'guideContainer-rootPanel-partA-guidetextbox_cin__', 'cin', '(a) *Corporate identity number (CIN)', S + 'cin[0]', { mandatory: true });
+field(A, 'guideTextBox', 'guideContainer-rootPanel-partA-guidetextbox_mail__', 'mail', '(c) *e-mail ID', S + 'mail[0]', { readOnly: true });
+field(A, 'guideDatePicker', 'guideContainer-rootPanel-partA-guidedatepicker_bm__', 'bm', 'Date of Board meeting', S + 'bm[0]');
+field(A, 'guideDropDownList', 'guideContainer-rootPanel-partA-guidedropdownlist_nat__', 'nat', 'Nature of financial statements', S + 'nat[0]', { options: ['A=Adopted Financial statements', 'P=Provisional'] });
+field(A, 'guideRadioButton', 'guideContainer-rootPanel-partA-guideradiobutton_agm__', 'agm', 'Whether AGM held', S + 'agm[0]', { options: ['Y=Yes', 'N=No'] });
+const B = root.add(new Cmp({ className: 'guidePanel', name: 'bs', title: 'Part B - Balance Sheet', id: 'guideContainer-rootPanel-bs__', somExpression: 'guide[0].guide1[0].guideRootPanel[0].bs[0]' }));
+const T = B.add(new Cmp({ className: 'guideTable', name: 'table', title: '', id: 'x', somExpression: 'x' }));
+for (const [row, k] of [['Row1', 'sc'], ['Row2', 'rs']]) {
+  const R = T.add(new Cmp({ className: 'guideTableRow', name: row, title: '', id: 'r', somExpression: 'r' }));
+  field(R, 'guideNumericBox', `guideContainer-rootPanel-bs-table-${row}-numericbox_${k}_cy__`, k + 'cy', 'Numeric Box', `bs.${k}cy`);
+  field(R, 'guideNumericBox', `guideContainer-rootPanel-bs-table-${row}-numericbox_${k}_py__`, k + 'py', 'Numeric Box', `bs.${k}py`, { readOnly: k === 'sc' });
+}
+// Repeatable signatory panel: instances live in the model only (no DOM), like a lazily rendered table.
+const SIG = root.add(new Cmp({ className: 'guidePanel', name: 'sig', title: 'Signatory details', id: 'guideContainer-rootPanel-sig__', somExpression: 'guide[0].guide1[0].guideRootPanel[0].sig[0]' }));
+const insts = [];
+function makeInst(i) {
+  const P = SIG.add(new Cmp({ className: 'guidePanel', name: 'sigrow', title: 'Signatory', id: `guideContainer-rootPanel-sig-sigrow${i ? '_' + i : ''}__`, somExpression: `guide[0].guide1[0].guideRootPanel[0].sig[0].sigrow[${i}]`, instanceIndex: i }));
+  P.instanceManager = IM;
+  field(P, 'guideTextBox', `guideContainer-rootPanel-sig-sigrow${i ? '_' + i : ''}-din__`, 'din', 'DIN or PAN', P.somExpression + '.din[0]');
+  field(P, 'guideTextBox', `guideContainer-rootPanel-sig-sigrow${i ? '_' + i : ''}-nm__`, 'nm', 'Name', P.somExpression + '.nm[0]');
+  insts.push(P);
+}
+const IM = { minOccur: 1, maxOccur: 10, get instanceCount() { return insts.length; }, addInstance() { makeInst(insts.length); } };
+makeInst(0);
+const SAVE = root.add(new Cmp({ className: 'guideButton', name: 'saveguidedraft_copy', title: 'Save', id: 'guideContainer-rootPanel-saveguidedraft_copy__', somExpression: 's' }));
+function walk(c, fn) { fn(c); (c.items || []).forEach(i => walk(i, fn)); }
+const bySom = () => { const m = {}; walk(root, c => m[c.somExpression] = c); return m; };
+window.guideBridge = {
+  visit(fn) { walk(root, fn); },
+  resolveNode(som) { return bySom()[som] || null; },
+  setProperty(soms, prop, vals) { soms.forEach((s, i) => { const c = bySom()[s]; if (c) c[prop] = vals[i]; }); },
+};
+</script>
+</body></html>
