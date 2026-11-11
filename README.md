@@ -1,3 +1,34 @@
+# MCA automation - Form Filler
+
+One app on http://127.0.0.1:8742 that takes a client from Tally to a saved draft on MCA:
+
+| Screen | What happens |
+|---|---|
+| 1 Get data | Tick clients, click **Get data for selected**. The agent reads this year's and last year's trial balance from Tally (port 9000), maps ledgers to Schedule III heads (reusing last year's approved mapping), builds the Schedule III workbook and prepares the AOC-4 / MGT-7A values. No Tally? Upload an Excel trial balance. |
+| 2 Review financials | Balance sheet and P&L, this year against last year. Review points from the agent (checks, unapproved mapping, last year's tie-out, partner notes, questions). Clear each, then tick **Verified, okay to file**. The tick is recorded with your name. |
+| 3 File on MCA | Only ticked clients. **Start filing for all** queues them; the Chrome side panel fills and saves each form. Staff log in, attach DSC, submit and pay. |
+| Agent queue | Every job (get data, build, reports, filing) with its status, and the activity log. |
+| Audit trail | For every filled field: value, where it was picked from, the Tally ledgers behind it with their mapping approval, the review tick, the fill time and the SRN. **Download audit file** saves it as Excel in the client's `audit` folder; every event is also kept in `audit\trail.jsonl` there. |
+
+Type your name at the bottom left once: approvals, cleared points and the tick are recorded against it.
+
+## Setup (each PC, once)
+1. Double-click `setup.bat` (installs openpyxl, pycel, pypdf, pdfplumber, python-docx).
+2. Tally Prime: F1 Help > Settings > Connectivity, Client/Server = Both, port 9000. Load this year's and last year's company.
+3. Double-click `start_server.bat` (this PC only) or `start_lan.bat` (other office PCs open `http://<this PC's IP>:8742`).
+4. Chrome extension: as before, see "The Chrome side panel" below.
+
+Clients from the old Schedule III app: `python tools\import_sch3.py "E:\Projects\Schedule III\_Schedule III App\Schedule-III-App"` copies their mapping and data into the matching client folders (the old folder is not changed).
+
+## Where things are
+- `clients\<Client>\` filing.json, the Schedule III workbook, MCA inputs workbook, `financials\` (config.json = mapping, approvals, Setup; `<FY>\` trial balances), `audit\`, `reports\`, `logs\`.
+- `sch3\engine\` the Schedule III builder (from the Schedule III app). `ff_fin.py` runs it, `ff_jobs.py` is the agent queue, `ff_audit.py` the trail, `ff_ui.py` the five screens.
+- The older screens still work: client details and questions (`/filings`), ADT-1 list (`/adt1`), captured forms (`/admin`), local AI (`/ai`).
+
+---
+
+# Older guide (still valid for the side panel and the filing queue)
+
 # MCA form filler: staff guide
 
 Fills AOC-4, MGT-7 and MGT-7A drafts on the MCA V3 portal from the client's Excel. **It only fills and clicks Save.** Login, captcha, attachments, DSC, Pre-scrutiny, Submit and Pay are always done by you.

@@ -202,7 +202,16 @@ class Schedule3:
 
 
 def find_schedule3(folder):
-    """The Schedule III workbook in a client folder: an .xlsx with BS, PL and Notes sheets."""
+    """The Schedule III workbook in a client folder: an .xlsx with BS, PL and Notes sheets.
+
+    filing.json "schedule3" (set when Form Filler builds the workbook from Tally) wins over any other copy."""
+    try:
+        import json
+        pick = json.loads((Path(folder) / "filing.json").read_text(encoding="utf-8")).get("schedule3")
+        if pick and (Path(folder) / pick).exists():
+            return Path(folder) / pick
+    except Exception:  # noqa: BLE001
+        pass
     for p in sorted(Path(folder).glob("*.xlsx")):
         if p.name.startswith("~$") or "mca inputs" in p.name.lower():
             continue

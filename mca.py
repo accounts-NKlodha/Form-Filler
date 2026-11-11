@@ -16,7 +16,7 @@ import webbrowser
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -25,6 +25,9 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 import app
 import attachments
+import ff_audit
+import ff_jobs
+import ff_ui
 import lastyear
 import smart
 import suggest
@@ -875,6 +878,17 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code, obj):
         self._send(code, json.dumps(obj))
 
+    def _file(self, p):
+        data = Path(p).read_bytes()
+        self.send_response(200)
+        ctype = {".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                 ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}.get(Path(p).suffix.lower(), "application/octet-stream")
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(Path(p).name))
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _body(self):
         if not hasattr(self, "_raw"):  # read once: the app and the old dashboard both look at it
             n = int(self.headers.get("Content-Length") or 0)
@@ -889,7 +903,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlsplit(self.path)
-        got = app.handle_get(u.path, parse_qs(u.query))  # filing app: /, /client, /api/panel
+        try:
+            got = ff_ui.handle_get(u.path, parse_qs(u.query))  # Form Filler: /, /data, /review, /file, /agents, /audit
+        except Exception as e:  # noqa: BLE001
+            got = 500, f"<pre>Form Filler error: {esc(e)}</pre>", "text/html"
+        if got:
+            code, body, ctype = got
+            if isinstance(body, tuple) and body[0] == "FILE":
+                return self._file(body[1])
+            return self._send(code, body, ctype)
+        got = app.handle_get(u.path, parse_qs(u.query))  # filing app: /client, /api/panel
         if got:
             return self._send(*got)
         if u.path == "/admin":
@@ -935,7 +958,8 @@ class Handler(BaseHTTPRequestHandler):
         form = {k: v[0] for k, v in lists.items()}
         form["_forms"] = lists.get("forms", [])
         form["_lists"] = lists
-        got = app.handle_post(u.path, parse_qs(u.query), body, form)  # filing app: /app/..., /api/active
+        got = ff_ui.handle_post(u.path, parse_qs(u.query), body, form) or \
+            app.handle_post(u.path, parse_qs(u.query), body, form)  # Form Filler /ff/..., filing app /app/..., /api/active
         if got:
             code, text, ctype, location = got
             if location:
@@ -980,6 +1004,15 @@ class Handler(BaseHTTPRequestHandler):
                 p = folder / f"fill_{log.get('slug', 'form')}_{datetime.now():%Y%m%d_%H%M%S}.json"
                 p.write_text(json.dumps(log, indent=1), encoding="utf-8")
                 print(f"fill log saved: {p.relative_to(ROOT)}  {log.get('counts')}")
+                try:
+                    c = log.get("counts") or {}
+                    if act and not str(log.get("slug", "")).startswith("adt"):
+                        ff_audit.event((ROOT / act).parent, "fill", f"{form_name(log.get('slug', ''))}: {c.get('filled', 0)} fields filled"
+                                       + (f", {c['failed']} failed" if c.get("failed") else "")
+                                       + (" and the section saved" if (log.get("save") or {}).get("clicked") else ""),
+                                       form=log.get("slug"), counts=c, by="agent")
+                except Exception:  # noqa: BLE001
+                    pass
                 return self._json(200, {"ok": True})
             if u.path == "/active":
                 path = self._form().get("path", "")
@@ -1013,13 +1046,14 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
 
-def serve(open_browser=True):
+def serve(open_browser=True, lan=False):
     sys.stdout.reconfigure(line_buffering=True)
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"MCA filler server on http://127.0.0.1:{PORT}  (Ctrl+C to stop)")
+    srv = ThreadingHTTPServer(("0.0.0.0" if lan else "127.0.0.1", PORT), Handler)
+    print(f"Form Filler on http://127.0.0.1:{PORT}" + (f"  (office LAN: http://<this PC's IP>:{PORT})" if lan else "") + "  (Ctrl+C to stop)")
+    ff_jobs.recover()
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()
-    print("Filing app: http://127.0.0.1:%d   Old dashboard: /admin   ADT-1: /adt1" % PORT)
+    print("Screens: /data  /review  /file  /agents  /audit   Older screens: /filings  /admin  /adt1  /ai")
     srv.serve_forever()
 
 
@@ -1028,6 +1062,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve")
     s.add_argument("--no-browser", action="store_true")
+    s.add_argument("--lan", action="store_true", help="also serve other PCs on the office LAN")
     m = sub.add_parser("map")
     m.add_argument("slug")
     w = sub.add_parser("workbook")
@@ -1039,7 +1074,7 @@ def main():
     p.add_argument("-o", "--out")
     a = ap.parse_args()
     if a.cmd == "serve":
-        serve(not a.no_browser)
+        serve(not a.no_browser, a.lan)
     elif a.cmd == "map":
         path, n, hits = build_map(a.slug)
         print(f"{path}: {n} number fields, {hits} with a source expression")

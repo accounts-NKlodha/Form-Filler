@@ -21,3 +21,6 @@ __pycache__/
 *.pyc
 .venv/
 ~$*
+activity.jsonl
+agent_jobs.json
+*.tmp

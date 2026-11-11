@@ -96,6 +96,8 @@ def problems(client, slug):
     folder = app.folder_of(client)
     f = app.load(folder)
     out = []
+    if not f.get("verified"):
+        out.append("financials not ticked verified, okay to file (Review financials)")
     if not f.get("cin"):
         out.append("CIN missing (Details)")
     if not app.inputs_path(folder).exists():
@@ -136,6 +138,15 @@ def add(pairs):
         added += 1
     save(q)
     return added, refused
+
+
+def _audit(j, text, by="agent"):
+    try:
+        import ff_audit
+        ff_audit.event(app.folder_of(j["client"]), "srn", f"{app.FORM_LABEL.get(j['slug'], j['slug'])}: {text}",
+                       form=j["slug"], srn=j.get("srn"), by=by)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _activate(q, j):
@@ -179,6 +190,8 @@ def advance(body):
         j["note"] = str(body.get("note") or "")[:300]
         j["counts"] = body.get("counts") or {}
         j["updated"] = datetime.now().isoformat(timespec="seconds")
+        _audit(j, {"submitted": f"Submitted on MCA, SRN {j['srn'] or 'not read'}", "saved": "Draft saved on MCA, not submitted",
+                   "held": f"Filing stopped: {j['note'] or 'needs attention'}", "skipped": "Skipped"}.get(j["status"], j["status"]))
     q["current"] = None
     nxt = next((x for x in q["jobs"] if x["status"] == "queued"), None) if q["running"] else None
     if not nxt:
@@ -210,8 +223,10 @@ def edit(form):
     elif act == "srn":
         j["srn"] = form.get("srn", "").strip().upper()[:20]
         j["status"] = "submitted" if j["srn"] else j["status"]
+        _audit(j, f"SRN {j['srn']} entered by staff", by=form.get("user") or "staff")
     elif act == "paid":
         j["paid"] = datetime.now().isoformat(timespec="seconds")
+        _audit(j, "Checked and paid on MCA", by=form.get("user") or "staff")
     j["updated"] = datetime.now().isoformat(timespec="seconds")
     save(q)
     return ""
