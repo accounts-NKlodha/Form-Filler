@@ -287,7 +287,7 @@ def build(folder, user="agent", log=None):
         ly_pdf = lastyear.find_last_aoc4(folder)
         if ly_pdf:
             try:
-                st["aoc4"] = ly_check.tie_aoc4(str(final), str(ly_pdf), div)
+                st["aoc4"] = tie_aoc4(final, ly_pdf, div)
                 st["aoc4_file"] = ly_pdf.name
             except Exception as e:  # noqa: BLE001
                 st["aoc4"] = {"error": str(e)}
@@ -303,6 +303,25 @@ def build(folder, user="agent", log=None):
         ff_audit.event(folder, "build", f"Schedule III build failed: {e}", error=str(e), by=user)
     (work_dir(folder) / "last_build.json").write_text(json.dumps(st, default=str, indent=1), encoding="utf-8")
     return st
+
+
+def tie_aoc4(built, pdf, divisor=1):
+    """Every previous-year figure on the face of the new statements against last year's filed AOC-4.
+
+    Reads the V3 portal PDF with the filing app's own reader (lastyear.read_aoc4_figures); falls back to
+    the XFA reader of the old Schedule III app for V2 e-forms."""
+    import lastyear
+    figs = [v for _, v in lastyear.read_aoc4_figures(pdf) if v is not None]
+    if not figs:
+        return ly_check.tie_aoc4(str(built), str(pdf), divisor)
+    rows = []
+    for sn, lbl, cy, py in ly_check.built_lines(str(built)):
+        rs = py * divisor
+        if abs(rs) < 0.5:
+            continue
+        hit = any(abs(abs(v) - abs(rs)) <= max(1.0, divisor) for v in figs)
+        rows.append({"statement": sn, "line": lbl, "py_rs": round(rs, 2), "found": hit})
+    return {"fields": len(figs), "rows": rows, "matched": sum(r["found"] for r in rows), "total": len(rows)}
 
 
 # ---------------------------------------------------------------- statements for the review screen
