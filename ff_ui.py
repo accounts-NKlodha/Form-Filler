@@ -228,8 +228,8 @@ def page_data(msg=""):
 <td>{esc(cfg.get('tally_company_cy', ''))}<br><span class=mut>Last year: {esc(cfg.get('tally_company_py', ''))}</span>
 <details><summary>Change Tally names or upload Excel</summary>
 <form method=post action="/ff/client/tally" class=row style="margin-top:8px"><input type=hidden name=c value="{esc(d.name)}">
-<label class=f>This year's company<input type=text name=cy value="{esc(cfg.get('tally_company_cy', ''))}"></label>
-<label class=f>Last year's company<input type=text name=py value="{esc(cfg.get('tally_company_py', ''))}"></label>
+<label class=f>This year's company<input type=text list=tallyco name=cy value="{esc(cfg.get('tally_company_cy', ''))}"></label>
+<label class=f>Last year's company<input type=text list=tallyco name=py value="{esc(cfg.get('tally_company_py', ''))}"></label>
 <button class=sm>Save names</button></form>
 <form method=post action="/ff/upload_tb?c={q}" enctype=multipart/form-data class=row style="margin-top:8px" data-tb>
 <select name=which aria-label="Which year"><option value=tb_cy>This year</option><option value=tb_py>Last year</option></select>
@@ -248,8 +248,8 @@ def page_data(msg=""):
 <label class=f>Client name (folder name)<input type=text name=name required></label>
 <label class=f>CIN<input type=text name=cin maxlength=21 placeholder="U12345TN2010PTC123456"></label>
 <label class=f>Financial year ended<input type=text name=fy_end value="31/03/2026"></label>
-<label class=f>Tally company, this year<input type=text name=cy placeholder="As shown in Tally"></label>
-<label class=f>Tally company, last year<input type=text name=py placeholder="e.g. the '- Audited' copy"></label>
+<label class=f>Tally company, this year<input type=text list=tallyco name=cy placeholder="As shown in Tally"></label>
+<label class=f>Tally company, last year<input type=text list=tallyco name=py placeholder="e.g. the '- Audited' copy"></label>
 <fieldset style="border:0;padding:0;margin:0"><legend class=mut>Forms</legend>
 {''.join(f'<label style="margin-right:12px"><input type=checkbox name=forms value="{s}" {"checked" if s in ("aoc4", "mgt7a") else ""}> {n}</label>' for s, n, _ in app.FORMS)}</fieldset>
 <div><button class=sm>Add client</button></div></form></details>"""
@@ -260,11 +260,12 @@ def page_data(msg=""):
             + f"""<div class=card><div class=h style="display:flex;justify-content:space-between"><span>Clients</span><span id=tally class=mut>Checking Tally…</span></div>
 <table><tr><th style="width:28px"><input type=checkbox data-all=c aria-label="Select all"></th><th>Client</th><th>Tally company</th><th>This year</th><th>Last year</th><th>Status</th></tr>
 {''.join(rows) or '<tr><td colspan=6 class=mut>No clients yet. Add one above.</td></tr>'}</table>
-<p class=mut style="margin:12px 0 0">A client without Tally uploads an Excel trial balance (Change Tally names or upload Excel) and follows the same steps.
+<datalist id=tallyco></datalist><p class=mut style="margin:12px 0 0">A client without Tally uploads an Excel trial balance (Change Tally names or upload Excel) and follows the same steps.
 Tally needs F1 Help &gt; Settings &gt; Connectivity: Client/Server set to Both, port 9000.</p></div>"""
             + add
             + """<script>fetch('/ff/api/tally').then(r=>r.json()).then(d=>{const t=document.getElementById('tally');
-t.textContent=d.error?('Tally not reachable: '+d.error):('Tally connected. Open: '+(d.companies||[]).join(', '))}).catch(()=>{});
+t.textContent=d.error?('Tally not reachable: '+d.error):('Tally connected. Open: '+((d.companies||[]).map(c=>c.name).join(', ')||'no company'));
+const dl=document.getElementById('tallyco');for(const c of d.companies||[]){const o=document.createElement('option');o.value=c.name;dl.appendChild(o)}}).catch(()=>{});
 for(const f of document.querySelectorAll('form[data-tb]'))f.addEventListener('submit',async e=>{e.preventDefault();const fi=f.querySelector('input[type=file]').files[0];
 if(!fi)return;const r=await fetch(f.action+'&which='+f.which.value+'&name='+encodeURIComponent(fi.name),{method:'POST',body:fi});const d=await r.json();
 location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error):('Read '+d.ledgers+' ledgers from '+fi.name+'. Click Get data for selected to build.'))});</script>""")
@@ -516,6 +517,11 @@ def page_agents(show="all", msg=""):
               "done": ("Done", "good"), "failed": ("Failed: retry", "badt")}[j["status"]]
         grp = {"queued": "working", "working": "working", "staff": "staff", "done": "done", "failed": "failed"}[j["status"]]
         acts = ""
+        if j["status"] == "staff" and j.get("pick"):
+            acts += (f"<form method=post action=/ff/jobs/act class=row style=\"margin-top:6px\"><input type=hidden name=id value={j['id']}>"
+                     f"<input type=hidden name=act value=pick><select name=company aria-label=\"Tally company\">"
+                     + "".join(f"<option>{esc(n)}</option>" for n in j["pick"].get("open") or [])
+                     + "</select><button class=sm>Use this company</button></form>")
         if j["status"] in ("failed", "staff"):
             acts += _jbtn(j, "retry", "Retry")
         if j["status"] != "working":
@@ -778,7 +784,9 @@ def handle_post(path, query, body, form):
         if path == "/ff/jobs/act":
             act = form.get("act")
             jid = int(form.get("id") or 0)
-            if act == "retry":
+            if act == "pick":
+                ff_jobs.pick(jid, form.get("company", "").strip(), user=form.get("user") or "staff")
+            elif act == "retry":
                 ff_jobs.retry(jid)
             elif act == "remove":
                 ff_jobs.remove(jid)

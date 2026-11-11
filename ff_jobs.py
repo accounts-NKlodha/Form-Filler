@@ -20,6 +20,7 @@ from datetime import datetime
 
 import app
 import ff_audit
+import ff_fin
 
 JOBS = app.ROOT / "agent_jobs.json"
 LOCK = threading.RLock()
@@ -157,26 +158,101 @@ def _tally_error(e, company):
     return e
 
 
+def _norm(s):
+    return " ".join("".join(ch.lower() if ch.isalnum() else " " for ch in (s or "")).split())
+
+
+def _resolve(folder, cfg, which, open_cos, jid):
+    """The Tally company to read for this year / last year.
+
+    Uses the saved name when it is open in Tally. Otherwise, when exactly one open company starts with the
+    saved name (e.g. 'Parekh Investment Limited - Audited' for 'Parekh Investment Limited'), that one is used,
+    saved for next time and written to the audit trail. Otherwise the job stops and staff pick from the list."""
+    key = "tally_company_cy" if which == "tb_cy" else "tally_company_py"
+    want = cfg.get(key) or (cfg.get("tally_company_cy") if which == "tb_py" else "") or folder.name
+    names = [c["name"] for c in open_cos]
+    if not names or want in names:
+        return want
+    near = [n for n in names if _norm(n).startswith(_norm(want)) or _norm(want).startswith(_norm(n))]
+    if len(near) == 1:
+        ff_audit.event(folder, "tally", f"'{want}' is not open in Tally; using '{near[0]}', the open company with the same name",
+                       which=which, company=near[0], by="agent")
+        return near[0]
+    label = "this year" if which == "tb_cy" else "last year"
+    _set(jid, pick={"which": which, "want": want, "open": names})
+    raise StaffNeeded(f"Pick the Tally company for {label}: '{want}' is not open")
+
+
+def _books_from(open_cos, company):
+    for c in open_cos:
+        if c["name"] == company:
+            try:
+                return ff_fin.dt.date.fromisoformat(c.get("books_from") or "")
+            except ValueError:
+                return None
+    return None
+
+
 def run_get_data(j):
-    import ff_fin
     folder = app.folder_of(j["client"])
     cfg = ff_fin.load_cfg(folder)
+    _set(j["id"], now="Checking which companies are open in Tally", pick=None)
+    try:
+        open_cos = ff_fin.tally_companies()
+    except Exception as e:  # noqa: BLE001
+        raise _tally_error(e, "")
+    fy = ff_fin.fy_of(folder)
     for which, label in (("tb_cy", "this year"), ("tb_py", "last year")):
-        company = cfg.get("tally_company_cy" if which == "tb_cy" else "tally_company_py") or folder.name
+        has_copy = (ff_fin.work_dir(folder) / "tb_py.csv").exists()
+        try:
+            company = _resolve(folder, cfg, which, open_cos, j["id"])
+        except StaffNeeded:
+            if which == "tb_py" and has_copy:
+                ff_audit.event(folder, "tally", "Last year's company is not open in Tally; the stored copy is used", by="agent")
+                continue
+            raise
+        if which == "tb_py":
+            start = ff_fin.fy_dates(f"{int(fy[:4]) - 1}-{fy[2:4]}")[0]
+            bf = _books_from(open_cos, company)
+            if bf and bf > start:
+                if has_copy:
+                    ff_audit.event(folder, "tally", f"'{company}' has books only from {bf:%d-%b-%Y}; last year's stored copy is used", by="agent")
+                    continue
+                _set(j["id"], pick={"which": which, "want": company, "open": [c["name"] for c in open_cos]})
+                raise StaffNeeded(f"'{company}' has books only from {bf:%d-%b-%Y}: pick last year's company or upload last year's trial balance")
         _set(j["id"], now=f"Reading {label} from Tally ('{company}')")
         try:
             n = ff_fin.pull(folder, which, company, user="agent")
         except Exception as e:  # noqa: BLE001
-            if which == "tb_py" and (ff_fin.work_dir(folder) / "tb_py.csv").exists():
+            if which == "tb_py" and has_copy:
                 ff_audit.event(folder, "tally", f"Last year's company not read ({e}); the stored copy is used", by="agent")
                 continue
             raise _tally_error(e, company)
+        cfg = ff_fin.load_cfg(folder)
         _set(j["id"], now=f"Read {n} ledgers for {label}")
     return run_build(j)
 
 
+def pick(jid, company, user="staff"):
+    """Staff chose the Tally company for a stopped Get data job: save it and run the job again."""
+    F = ff_fin
+    with LOCK:
+        j = next((x for x in load()["jobs"] if x["id"] == jid), None)
+    if not j or not j.get("pick") or not company:
+        return
+    folder = app.folder_of(j["client"])
+    cfg = F.load_cfg(folder)
+    key = "tally_company_cy" if j["pick"]["which"] == "tb_cy" else "tally_company_py"
+    cfg[key] = company
+    if key == "tally_company_cy" and cfg.get("tally_company_py") == j["pick"]["want"]:
+        cfg["tally_company_py"] = company
+    F.save_cfg(folder, cfg)
+    ff_audit.event(folder, "tally", f"{'This' if key.endswith('cy') else 'Last'} year's Tally company set to '{company}'", by=user)
+    _set(jid, pick=None)
+    retry(jid)
+
+
 def run_build(j):
-    import ff_fin
     folder = app.folder_of(j["client"])
     _set(j["id"], now="Building Schedule III (about a minute)")
     st = ff_fin.build(folder, user="agent")
@@ -197,7 +273,6 @@ def run_build(j):
 
 
 def run_docs(j):
-    import ff_fin
     folder = app.folder_of(j["client"])
     _set(j["id"], now="Drafting reports and meeting papers")
     out, flags = ff_fin.make_docs(folder)
