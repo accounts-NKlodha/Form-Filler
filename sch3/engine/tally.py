@@ -3,7 +3,7 @@
 F1 Help > Settings > Connectivity (Tally Prime): "TallyPrime acts as" = Both / Server, port 9000.
 Sign convention kept as Tally exports it: Dr negative, Cr positive.
 """
-import csv, datetime as dt, re, urllib.request
+import csv, datetime as dt, re, threading, urllib.request
 import xml.etree.ElementTree as ET
 
 
@@ -11,15 +11,25 @@ class TallyError(Exception):
     pass
 
 
-def _post(xml, host="localhost", port=9000, timeout=120):
+_ONE_AT_A_TIME = threading.Lock()  # Tally answers one request at a time; never send two together
+
+
+def _post(xml, host="localhost", port=9000, timeout=300):
     req = urllib.request.Request(f"http://{host}:{port}", data=xml.encode("utf-8"),
                                  headers={"Content-Type": "text/xml;charset=utf-8"})
+    if not _ONE_AT_A_TIME.acquire(timeout=timeout):
+        raise TallyError("Tally is still busy with an earlier request")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
     except Exception as e:
+        if "timed out" in str(e).lower():
+            raise TallyError(f"Tally did not answer within {timeout // 60} minutes. If Tally shows 'Not responding', "
+                             "close it from Task Manager, open it again with the company loaded, then Retry.")
         raise TallyError(f"Cannot reach Tally at {host}:{port}. Open Tally and enable the server (F1 > Settings > "
                          f"Connectivity, port {port}). Detail: {e}")
+    finally:
+        _ONE_AT_A_TIME.release()
     txt = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8", "replace")
     # strip characters Tally sometimes emits that are invalid in XML 1.0
     txt = re.sub(r"&#(?:[0-8]|1[124-9]|2[0-9]|3[01]);", "", txt)

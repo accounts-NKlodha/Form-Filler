@@ -151,6 +151,8 @@ class StaffNeeded(Exception):
 
 def _tally_error(e, company):
     s = str(e)
+    if "did not answer within" in s:
+        return StaffNeeded(s)
     if "10061" in s or "refused" in s.lower() or "timed out" in s.lower() or "unreachable" in s.lower():
         return StaffNeeded("Tally is not answering on port 9000: start Tally with the XML server on")
     if "no ledgers" in s.lower():
