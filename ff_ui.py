@@ -518,10 +518,7 @@ def page_agents(show="all", msg=""):
         grp = {"queued": "working", "working": "working", "staff": "staff", "done": "done", "failed": "failed"}[j["status"]]
         acts = ""
         if j["status"] == "staff" and j.get("pick"):
-            acts += (f"<form method=post action=/ff/jobs/act class=row style=\"margin-top:6px\"><input type=hidden name=id value={j['id']}>"
-                     f"<input type=hidden name=act value=pick><select name=company aria-label=\"Tally company\">"
-                     + "".join(f"<option>{esc(n)}</option>" for n in j["pick"].get("open") or [])
-                     + "</select><button class=sm>Use this company</button></form>")
+            acts += _pick_form(j)
         if j["status"] in ("failed", "staff"):
             acts += _jbtn(j, "retry", "Retry")
         if j["status"] != "working":
@@ -559,6 +556,38 @@ def page_agents(show="all", msg=""):
 <div class="card s4"><div class=h>Activity log, newest first</div>{log or '<p class=mut>Nothing yet.</p>'}
 <p class=mut style="margin:12px 0 0">Every line here is also written to that client's audit trail.</p></div></div>""")
     return shell("Agent queue", body, "/agents", msg, refresh=5 if working else 0)
+
+
+def _pick_form(j):
+    """Two dropdowns (this year, last year) of the companies open in Tally, for a stopped Get data job."""
+    names = j["pick"].get("open") or []
+    try:
+        cfg = ff_fin.load_cfg(app.folder_of(j["client"]))
+    except Exception:  # noqa: BLE001
+        cfg = {}
+    fy = fy_label()
+    yy = [int(x) for x in re.findall(r"20(\d\d)", fy)[:1]] or [26]
+    py_tag = f"{yy[0] - 1:02d}-{yy[0]:02d}"  # e.g. 24-25 when this year is 2025-26
+
+    def best(want, prefer_tag=None, avoid=None):
+        if prefer_tag:  # last year: a company named for that year ('... 24-25') wins
+            hit = [n for n in names if prefer_tag in n]
+            if hit:
+                return hit[0]
+        if want in names and want != avoid:
+            return want
+        rest = [n for n in names if n != avoid]
+        return (rest or names or [""])[0]
+
+    cy = best(cfg.get("tally_company_cy", ""))
+    py = best(cfg.get("tally_company_py", ""), py_tag, avoid=cy)
+    opt = lambda sel: "".join(f"<option {'selected' if n == sel else ''}>{esc(n)}</option>" for n in names)
+    return (f"<form method=post action=/ff/jobs/act style=\"margin-top:6px;display:grid;gap:6px\"><input type=hidden name=id value={j['id']}>"
+            f"<input type=hidden name=act value=pick>"
+            f"<label class=f>This year's company<select name=cy>{opt(cy)}</select></label>"
+            f"<label class=f>Last year's company<select name=py>{opt(py)}"
+            f"<option value=\"\">Keep last year's stored copy</option></select></label>"
+            f"<div><button class=sm>Use these companies</button></div></form>")
 
 
 def _jbtn(j, act, text):
@@ -785,7 +814,7 @@ def handle_post(path, query, body, form):
             act = form.get("act")
             jid = int(form.get("id") or 0)
             if act == "pick":
-                ff_jobs.pick(jid, form.get("company", "").strip(), user=form.get("user") or "staff")
+                ff_jobs.pick(jid, form.get("cy", "").strip(), form.get("py", "").strip(), user=form.get("user") or "staff")
             elif act == "retry":
                 ff_jobs.retry(jid)
             elif act == "remove":

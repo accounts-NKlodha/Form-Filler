@@ -169,7 +169,9 @@ def _resolve(folder, cfg, which, open_cos, jid):
     saved name (e.g. 'Parekh Investment Limited - Audited' for 'Parekh Investment Limited'), that one is used,
     saved for next time and written to the audit trail. Otherwise the job stops and staff pick from the list."""
     key = "tally_company_cy" if which == "tb_cy" else "tally_company_py"
-    want = cfg.get(key) or (cfg.get("tally_company_cy") if which == "tb_py" else "") or folder.name
+    if which == "tb_py" and key in cfg and not cfg[key]:
+        raise StaffNeeded("Last year's company not set; the stored copy is used")
+    want = cfg.get(key) or folder.name
     names = [c["name"] for c in open_cos]
     if not names or want in names:
         return want
@@ -233,21 +235,20 @@ def run_get_data(j):
     return run_build(j)
 
 
-def pick(jid, company, user="staff"):
-    """Staff chose the Tally company for a stopped Get data job: save it and run the job again."""
-    F = ff_fin
+def pick(jid, cy, py="", user="staff"):
+    """Staff chose the Tally companies for a stopped Get data job: save them and run the job again.
+    An empty last-year choice keeps the stored last-year trial balance."""
     with LOCK:
         j = next((x for x in load()["jobs"] if x["id"] == jid), None)
-    if not j or not j.get("pick") or not company:
+    if not j or not cy:
         return
     folder = app.folder_of(j["client"])
-    cfg = F.load_cfg(folder)
-    key = "tally_company_cy" if j["pick"]["which"] == "tb_cy" else "tally_company_py"
-    cfg[key] = company
-    if key == "tally_company_cy" and cfg.get("tally_company_py") == j["pick"]["want"]:
-        cfg["tally_company_py"] = company
-    F.save_cfg(folder, cfg)
-    ff_audit.event(folder, "tally", f"{'This' if key.endswith('cy') else 'Last'} year's Tally company set to '{company}'", by=user)
+    cfg = ff_fin.load_cfg(folder)
+    cfg["tally_company_cy"] = cy
+    cfg["tally_company_py"] = py
+    ff_fin.save_cfg(folder, cfg)
+    ff_audit.event(folder, "tally", f"Tally companies set: this year '{cy}', last year "
+                   + (f"'{py}'" if py else "the stored copy"), by=user)
     _set(jid, pick=None)
     retry(jid)
 
