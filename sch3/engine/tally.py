@@ -41,11 +41,46 @@ def _esc(s):
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
+def _tdate(d):
+    """Tally's own date text, e.g. 1-Apr-2025. TallyPrime can hang on 20250401 in period variables."""
+    return f"{d.day}-{d:%b-%Y}"
+
+
+_AMT = "$$StringFindAndReplace:(if $$IsDebit:${f} then -$$NumValue:${f} else $$NumValue:${f}):\"(-)\":\"-\""
+
+
+def _report(collection, fields, company=None, frm=None, to=None, host="localhost", port=9000):
+    """Export a small TDL report (one ROW per object). fields: {tag: TDL expression}.
+    The same request shape the Tally MCP connector uses, which TallyPrime answers quickly for a period."""
+    sv = "<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>"
+    if frm: sv += f"<SVFROMDATE>{_tdate(frm)}</SVFROMDATE>"
+    if to: sv += f"<SVTODATE>{_tdate(to)}</SVTODATE>"
+    if company: sv += f"<SVCURRENTCOMPANY>{_esc(company)}</SVCURRENTCOMPANY>"
+    names = ",".join(f"F{i}" for i in range(len(fields)))
+    flds = "".join(f"<FIELD NAME=\"F{i}\"><SET>{_esc(expr)}</SET><XMLTAG>{tag}</XMLTAG></FIELD>"
+                   for i, (tag, expr) in enumerate(fields.items()))
+    xml = ("<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>FFReport</ID></HEADER>"
+           f"<BODY><DESC><STATICVARIABLES>{sv}</STATICVARIABLES><TDL><TDLMESSAGE>"
+           "<REPORT NAME=\"FFReport\"><FORMS>FFForm</FORMS></REPORT><FORM NAME=\"FFForm\"><PARTS>FFPart</PARTS><XMLTAG>DATA</XMLTAG></FORM>"
+           "<PART NAME=\"FFPart\"><LINES>FFLine</LINES><REPEAT>FFLine : FFColl</REPEAT><SCROLLED>Vertical</SCROLLED></PART>"
+           f"<LINE NAME=\"FFLine\"><FIELDS>{names}</FIELDS><XMLTAG>ROW</XMLTAG></LINE>{flds}"
+           f"<COLLECTION NAME=\"FFColl\"><TYPE>{collection}</TYPE></COLLECTION>"
+           "</TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>")
+    txt = _post(xml, host, port)
+    if "<LINEERROR>" in txt:
+        raise TallyError(re.search(r"<LINEERROR>(.*?)</LINEERROR>", txt, re.S).group(1).strip())
+    try:
+        root = ET.fromstring(txt)
+    except ET.ParseError as e:
+        raise TallyError(f"Unreadable reply from Tally: {e}")
+    return [{ch.tag: (ch.text or "").strip() for ch in row} for row in root.iter("ROW")]
+
+
 def _collection(cid, typ, fields, company=None, frm=None, to=None, host="localhost", port=9000):
     sv = "<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>"
     if company: sv += f"<SVCURRENTCOMPANY>{_esc(company)}</SVCURRENTCOMPANY>"
-    if frm: sv += f"<SVFROMDATE>{frm:%Y%m%d}</SVFROMDATE>"
-    if to: sv += f"<SVTODATE>{to:%Y%m%d}</SVTODATE>"
+    if frm: sv += f"<SVFROMDATE>{_tdate(frm)}</SVFROMDATE>"
+    if to: sv += f"<SVTODATE>{_tdate(to)}</SVTODATE>"
     fetch = "".join(f"<NATIVEMETHOD>{f}</NATIVEMETHOD>" for f in fields if not f.startswith("_"))
     comp = "".join(f"<COMPUTE>{f[1:]}:${f}</COMPUTE>" for f in fields if f.startswith("_"))
     xml = f"""<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>{cid}</ID></HEADER>
@@ -111,9 +146,11 @@ def _primary(name, parents):
 
 def trial_balance(company, frm, to, host="localhost", port=9000):
     """Ledger-wise TB for the period. Returns list of dicts in the engine CSV layout."""
-    led = _collection("SchIIILedgers", "Ledger",
-                      ["Parent", "OpeningBalance", "ClosingBalance", "DebitTotals", "CreditTotals", "_PrimaryGroup"],
-                      company=company, frm=frm, to=to, host=host, port=port)
+    amt = lambda f: _AMT.replace("{f}", f)
+    led = _report("Ledger", {"NAME": "$Name", "PARENT": "$Parent", "PRIMARYGROUP": "$_PrimaryGroup",
+                             "OPENINGBALANCE": amt("OpeningBalance"), "DEBITTOTALS": amt("DebitTotals"),
+                             "CREDITTOTALS": amt("CreditTotals"), "CLOSINGBALANCE": amt("ClosingBalance")},
+                  company=company, frm=frm, to=to, host=host, port=port)
     parents = None
     out = []
     for r in led:

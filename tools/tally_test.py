@@ -20,9 +20,7 @@ steps = [
     ("Group list", lambda: tally._collection("T2", "Group", ["Parent"], company=co)),
     ("Ledger names", lambda: tally._collection("T3", "Ledger", ["Parent"], company=co)),
     ("Ledger balances, no dates", lambda: tally._collection("T4", "Ledger", ["Parent", "OpeningBalance", "ClosingBalance"], company=co)),
-    ("Ledger balances for the year", lambda: tally._collection("T5", "Ledger", ["Parent", "OpeningBalance", "ClosingBalance"], company=co, frm=frm, to=to)),
-    ("+ debit/credit totals", lambda: tally._collection("T6", "Ledger", ["Parent", "OpeningBalance", "ClosingBalance", "DebitTotals", "CreditTotals"], company=co, frm=frm, to=to)),
-    ("+ primary group", lambda: tally._collection("T7", "Ledger", ["Parent", "OpeningBalance", "ClosingBalance", "DebitTotals", "CreditTotals", "_PrimaryGroup"], company=co, frm=frm, to=to)),
+    ("Trial balance for the year (new)", lambda: tally.trial_balance(co, frm, to)),
 ]
 print(f"Company: {co!r}, year {frm} to {to}\n")
 for name, fn in steps:
