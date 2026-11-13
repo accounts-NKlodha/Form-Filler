@@ -1,4 +1,9 @@
-import sys, re, zipfile, shutil, time, math
+import ast, sys, re, zipfile, shutil, time, math
+if not hasattr(ast, "Str"):  # Python 3.14 removed ast.Str; pycel 1.0b30 still builds it
+    def _Str(*a, **k):
+        v = a[0] if a else k.pop("s", k.pop("value", None))
+        return ast.Constant(value=v, **k)
+    ast.Str = _Str
 from pycel import ExcelCompiler
 from xml.sax.saxutils import escape
 src, dst = sys.argv[1], sys.argv[2]
