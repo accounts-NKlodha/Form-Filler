@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 import app
 import ff_audit
+import ff_docs
 import ff_fin
 import ff_jobs
 import filing_queue
@@ -275,7 +276,7 @@ location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error
 # ---------------------------------------------------------------- 2 Review financials
 
 TABS = [("bs", "Balance sheet"), ("pl", "Profit and loss"), ("notes", "Notes to accounts"), ("mapping", "Mapping"),
-        ("questions", "Questions for the forms"), ("reports", "Reports and meetings")]
+        ("questions", "Questions for the forms"), ("docs", "Documents"), ("reports", "Reports and meetings")]
 
 
 def page_review(name="", tab="bs", msg=""):
@@ -304,7 +305,9 @@ def page_review(name="", tab="bs", msg=""):
         tick = (f"<form method=post action=/ff/verify data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
                 f"<button class=p {'disabled' if open_n or not fs else ''} title=\"{'Clear every review point first' if open_n else ''}\">Verified, okay to file</button></form>")
     acts = pick + (f"<a class=btn href=\"/ff/workbook?c={q}\">Open in Excel</a>" if fs else "") + tick
-    tabs = "<nav class=tabs>" + "".join(f"<a href=\"/review?c={q}&tab={k}\" class=\"{'on' if k == tab else ''}\">{t}</a>" for k, t in TABS) + "</nav>"
+    nmiss = len(ff_docs.missing(folder))
+    tlabel = lambda k, t: f"{t} ({nmiss} missing)" if k == "docs" and nmiss else t
+    tabs = "<nav class=tabs>" + "".join(f"<a href=\"/review?c={q}&tab={k}\" class=\"{'on' if k == tab else ''}\">{tlabel(k, t)}</a>" for k, t in TABS) + "</nav>"
     left = _review_tab(folder, tab)
     pts_html = []
     for p in pts:
@@ -341,9 +344,43 @@ def _change(cy, py):
     return "Nil" if abs(d) < 0.5 else money(d)
 
 
+def _docs_tab(folder):
+    name = folder.name
+    rows = []
+    for r in ff_docs.checklist(folder):
+        if r["files"]:
+            st = tag("Uploaded", "good")
+        elif r["need"] == "must":
+            st = tag("Missing, needed", "need")
+        else:
+            st = tag("Not uploaded", "")
+        files = "".join(
+            f"<div class=row style=\"gap:8px;margin-top:4px\"><span>{esc(f.name)}</span><span class=mut>{ff_docs.stamp(f)}</span>"
+            f"<form method=post action=/ff/doc/remove style=\"display:inline\"><input type=hidden name=c value=\"{esc(name)}\">"
+            f"<input type=hidden name=kind value=\"{r['kind']}\"><input type=hidden name=file value=\"{esc(f.name)}\">"
+            f"<button class=link>Remove</button></form></div>" for f in r["files"])
+        btn = ("Add files" if r["multi"] and r["files"] else "Replace" if r["files"] else "Upload")
+        up = (f"<form class=\"row docup\" style=\"gap:6px;margin-top:6px\" data-c=\"{esc(name)}\" data-k=\"{r['kind']}\">"
+              f"<input type=file accept=\"{r['accept']}\" {'multiple' if r['multi'] else ''} aria-label=\"{esc(r['title'])}\">"
+              f"<button class=sm>{btn}</button></form>")
+        rows.append(f"<tr><td><b>{esc(r['title'])}</b><div class=mut>{esc(r['why'])}</div>{files}{up}</td><td style=\"width:160px\">{st}</td></tr>")
+    js = """<script>for(const f of document.querySelectorAll('form.docup'))f.addEventListener('submit',async e=>{e.preventDefault();
+const fs=[...f.querySelector('input[type=file]').files];if(!fs.length)return;const b=f.querySelector('button');b.disabled=true;
+let who='';try{who=encodeURIComponent((localStorage.getItem('ff_user')||'').trim())}catch(e){}let msg=[];
+for(const fi of fs){b.textContent='Uploading '+fi.name;const r=await fetch('/ff/doc/upload?c='+encodeURIComponent(f.dataset.c)+'&kind='+f.dataset.k+'&name='+encodeURIComponent(fi.name)+'&user='+who,{method:'POST',body:fi});
+const d=await r.json();msg.push(d.error?('Not saved '+fi.name+': '+d.error):('Saved '+d.saved))}
+location.href=location.pathname+'?c='+encodeURIComponent(f.dataset.c)+'&tab=docs&msg='+encodeURIComponent(msg.join('. '))})</script>"""
+    return (f"<div class=h>Documents for {esc(name)}. Each upload goes to the right place in the client folder and is noted in the audit trail.</div>"
+            f"<table>{''.join(rows)}</table>"
+            f"<p class=mut style=\"margin:12px 0 0\">Replaced or removed files are kept in the client's _replaced folder. "
+            f"After adding PDFs, run Suggest answers with local AI again so it reads them.</p>{js}")
+
+
 def _review_tab(folder, tab):
     name = folder.name
     q = quote(name)
+    if tab == "docs":
+        return _docs_tab(folder)
     if tab in ("bs", "pl", "notes"):
         st = ff_fin.statements(folder)
         if not st:
@@ -728,6 +765,19 @@ def handle_post(path, query, body, form):
     name = form.get("c") or q.get("c") or ""
     lists = form.get("_lists", {})
     try:
+        if path == "/ff/doc/upload":
+            folder = app.folder_of(name)
+            try:
+                dest = ff_docs.upload(folder, q.get("kind", ""), q.get("name", "upload.pdf"), body, q.get("user") or user)
+            except PermissionError:
+                return 409, json.dumps({"error": "that file is open in another program: close it and try again"}), "application/json", None
+            except Exception as e:  # noqa: BLE001
+                return 400, json.dumps({"error": str(e)}), "application/json", None
+            return 200, json.dumps({"saved": dest.name}), "application/json", None
+        if path == "/ff/doc/remove":
+            folder = app.folder_of(name)
+            ff_docs.remove(folder, form.get("kind", ""), form.get("file", ""), user)
+            return _back("/review", f"Removed {form.get('file', '')}. A copy is kept in _replaced.", c=name, tab="docs")
         if path == "/ff/upload_tb":
             folder = app.folder_of(name)
             n = ff_fin.upload_tb(folder, q.get("which", "tb_cy"), q.get("name", "upload.xlsx"), body, user)
@@ -837,7 +887,7 @@ def handle_post(path, query, body, form):
 
 
 def _page_of(path):
-    if path.startswith(("/ff/map", "/ff/point", "/ff/verify", "/ff/unverify", "/ff/prepare", "/ff/answers", "/ff/docs")):
+    if path.startswith(("/ff/map", "/ff/point", "/ff/verify", "/ff/unverify", "/ff/prepare", "/ff/answers", "/ff/docs", "/ff/doc/")):
         return "/review"
     if path.startswith("/ff/queue"):
         return "/file"
