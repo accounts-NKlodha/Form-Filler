@@ -197,6 +197,23 @@ def _books_from(open_cos, company):
     return None
 
 
+def _sibling_for(open_cos, company, start):
+    """Another open company of the same client whose books cover `start`
+    (e.g. 'X Ltd - Audited 24-25' when 'X Ltd - Audited' starts on 1-Apr-2025). The latest such company wins."""
+    base = _norm(company.split(" - ")[0])
+    best = None
+    for c in open_cos:
+        if c["name"] == company or not _norm(c["name"]).startswith(base):
+            continue
+        try:
+            bf = ff_fin.dt.date.fromisoformat(c.get("books_from") or "")
+        except ValueError:
+            continue
+        if bf <= start and (best is None or bf > best[1]):
+            best = (c["name"], bf)
+    return best[0] if best else None
+
+
 def run_get_data(j):
     folder = app.folder_of(j["client"])
     cfg = ff_fin.load_cfg(folder)
@@ -218,6 +235,13 @@ def run_get_data(j):
         if which == "tb_py":
             start = ff_fin.fy_dates(f"{int(fy[:4]) - 1}-{fy[2:4]}")[0]
             bf = _books_from(open_cos, company)
+            if bf and bf > start:
+                alt = _sibling_for(open_cos, company, start)
+                if alt:
+                    ff_audit.event(folder, "tally", f"'{company}' has books only from {bf:%d-%b-%Y}; last year is read from "
+                                   f"'{alt}', the open company with the same name that covers {start:%d-%b-%Y}", by="agent")
+                    company = alt
+                    bf = None
             if bf and bf > start:
                 if has_copy:
                     ff_audit.event(folder, "tally", f"'{company}' has books only from {bf:%d-%b-%Y}; last year's stored copy is used", by="agent")
