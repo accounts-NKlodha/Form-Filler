@@ -158,7 +158,9 @@ for(const f of document.querySelectorAll('form'))f.addEventListener('submit',e=>
  let h=f.querySelector('input[name=user]');if(!h){h=document.createElement('input');h.type='hidden';h.name='user';f.appendChild(h)}h.value=u;
  const b=f.querySelector('button[data-busy]');if(b){b.disabled=true;b.textContent=b.dataset.busy}});
 for(const t of document.querySelectorAll('[data-all]'))t.addEventListener('change',()=>{for(const c of document.querySelectorAll('input[name='+t.dataset.all+']'))c.checked=t.checked});
-const r=document.body.dataset.refresh;if(r)setTimeout(()=>location.reload(),+r*1000);
+const r=document.body.dataset.refresh;let dirty=false;document.addEventListener('input',e=>{if(e.target.id!=='who')dirty=true});
+if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ffBusy||(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.id!=='who');
+ if(busy)setTimeout(tick,2000);else location.reload()};setTimeout(tick,+r*1000)}
 })();</script>"""
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
@@ -378,7 +380,28 @@ def page_review(name="", tab="", msg=""):
             + f"""<div class="g12 fit"><div class="card s7">{left}</div>
 <div class="card s5"><div class=h>Review points from the agent. Each says what does not agree and what to do. All must be cleared before the tick.</div>{''.join(pts_html)}
 <p class=mut style="margin:16px 0 0">The tick is recorded with your name and the time. Only ticked clients go to step 3. Getting data or building again removes the tick.</p></div></div>""")
-    return shell(f"Review: {name}", body, "/review", msg)
+    live, note = _agent_note(name)
+    if note:
+        body = note + body
+    return shell(f"Review: {name}", body, "/review", msg, refresh=5 if live else 0)
+
+
+def _agent_note(name):
+    """(agent still working, banner) for the client's newest job: progress while it runs, the reason when it stopped."""
+    jobs = [j for j in ff_jobs.load()["jobs"] if j["client"] == name]
+    if not jobs:
+        return False, ""
+    j = max(jobs, key=lambda x: x["id"])
+    what = {"get_data": "Getting data from Tally", "build": "Building the financials", "docs": "Drafting the documents"}.get(j["kind"], "Working")
+    if j["status"] in ("working", "queued"):
+        now = j.get("now") or ""
+        return True, (f"<div class=msg role=status><b>{what}.</b> {esc(now)}. This page refreshes by itself; the figures below are "
+                      f"from the last build until it finishes. <a href=/agents>Agent queue</a></div>")
+    if j["status"] == "failed":
+        return False, f"<div class=msg role=alert><b>{what} failed.</b> {esc(j.get('now') or '')} <a href=/agents>Open the agent queue to retry</a></div>"
+    if j["status"] == "staff" and "review point" not in (j.get("now") or ""):
+        return False, f"<div class=msg role=alert><b>The agent needs you.</b> {esc(j.get('now') or '')}. <a href=/agents>Open the agent queue</a></div>"
+    return False, ""
 
 
 def _change(cy, py):
@@ -418,11 +441,11 @@ def _docs_tab(folder):
 const done=()=>{if(busy)return;location.href=location.pathname+'?c='+encodeURIComponent(c)+'&tab=docs&msg='+encodeURIComponent(msgs.join('. '))};
 async function send(d,files){if(!files.length)return;const note=d.querySelector('.note');let who='';
 try{who=encodeURIComponent((localStorage.getItem('ff_user')||'').trim())}catch(e){}
-busy++;for(const fi of files){note.textContent='Uploading '+fi.name+' ...';
+busy++;window.ffBusy=true;for(const fi of files){note.textContent='Uploading '+fi.name+' ...';
 try{const r=await fetch('/ff/doc/upload?c='+encodeURIComponent(d.dataset.c)+'&kind='+d.dataset.k+'&name='+encodeURIComponent(fi.name)+'&user='+who,{method:'POST',body:fi});
 const j=await r.json();msgs.push(j.error?('Not saved '+fi.name+': '+j.error):('Saved '+j.saved));note.textContent=j.error?('Not saved: '+j.error):('Saved '+j.saved)}
 catch(e){msgs.push('Not saved '+fi.name+': the server did not answer');note.textContent='Not saved: the server did not answer'}}
-busy--;done()}
+busy--;window.ffBusy=busy>0;done()}
 for(const d of document.querySelectorAll('.doc')){const inp=d.querySelector('input[type=file]');
 inp.addEventListener('change',()=>send(d,[...inp.files]));
 d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over')});d.addEventListener('dragleave',()=>d.classList.remove('over'));
@@ -895,7 +918,9 @@ def handle_post(path, query, body, form):
             if not picked:
                 return _back("/data", "Tick at least one client.")
             n = sum(1 for c in picked if ff_jobs.add(app.folder_of(c).name, "get_data", user or "staff"))
-            return _back("/agents", f"{n} client{'s' if n != 1 else ''} queued. The agent reads Tally one company at a time.")
+            if len(picked) == 1:  # one client: stay with that client and watch it arrive
+                return _back("/review", "", c=app.folder_of(picked[0]).name)
+            return _back("/data", f"{n} clients queued. The agent reads Tally one company at a time; the Status column shows each one.")
         if path == "/ff/map/approve":
             folder = app.folder_of(name)
             ok = set(lists.get("ok", []))
