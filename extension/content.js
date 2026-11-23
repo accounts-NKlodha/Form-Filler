@@ -65,9 +65,13 @@
   // The side panel asks this tab how it is every 3 s while it is open. It shows the same text as the page box,
   // so with the panel open plain progress is not drawn over the form: the box comes up only when it has buttons.
   let panelSeen = 0;
+  let shown = [];  // the buttons of the message now showing: [label, handler]
   const panelOpen = () => Date.now() - panelSeen < 8000;
   function status(html, buttons = []) {
-    if (!buttons.length && panelOpen()) { close(); mirror(html, []); return; }
+    // Side panel open: nothing is drawn over the form. Text and buttons both go to the panel.
+    shown = buttons;
+    // (A button that opens a file chooser needs a click on the page itself, so that one message keeps the box.)
+    if (panelOpen() && !buttons.some(x => /…/.test(x[0]))) { close(); mirror(html, buttons.map(x => x[0])); return; }
     const b = panel();
     b.innerHTML = `<div style="font-weight:600;margin-bottom:4px">MCA filler <span style="font-weight:400;opacity:.7">v${chrome.runtime.getManifest().version}</span></div><div>${html}</div>`;
     if (buttons.length) {
@@ -491,6 +495,12 @@
     }
     if (!msg || msg.type !== 'mcafill-cmd' || !hasForm()) return false;
     if (msg.cmd === 'probe') panelSeen = Date.now();
+    if (msg.cmd === 'button') {
+      // A button of the current message, pressed in the side panel (matched by its label, so a stale press does nothing).
+      const hit = shown[msg.index];
+      if (hit && hit[0] === msg.label) { hit[1](); reply({ ok: true }); } else reply({ ok: false });
+      return false;
+    }
     if (msg.cmd === 'probe') reply({ ok: true, slug: slug(), busy, version: chrome.runtime.getManifest().version });
     else reply({ ok: true, slug: slug(), result: command(msg.cmd) });
     return false;
