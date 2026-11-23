@@ -703,7 +703,6 @@ def page_file(form="all", msg=""):
               "<li>Log in and enter the captcha.</li><li>Click the Form Filler icon, then <b>Start the queue</b> in the side panel.</li>"
               + ("<li>The tool clicks Submit after a 10 second countdown (Stop cancels it). The SRN is read and the next client opens.</li></ol>" if auto else
                  "<li>On the last page click Submit yourself. The SRN is read and the next client opens.</li></ol>") +
-              "
               "<p class=mut>It works inside your own Chrome, because MCA blocks automated browsers. Alt+Shift+X stops it.</p>")
     body = (head(f"Step 3 of 3 · {fy_label()}", "File on MCA", acts)
             + f"<div class=filters><span class=mut>Form</span>{filt}</div>"
