@@ -801,7 +801,7 @@ def handle_post(path, query, body, form):
                 msg = Q.edit(form) or "Updated."
         except Exception as e:  # noqa: BLE001
             msg = f"Error: {e}"
-        return 303, "", "text/html", f"/?msg={quote(msg)}#queue"
+        return 303, "", "text/html", f"/filings?msg={quote(msg)}#queue"
     if path == "/api/active":
         try:
             d = json.loads(body or b"{}")
@@ -854,5 +854,5 @@ def handle_post(path, query, body, form):
     except PermissionError as e:
         return back(name, str(e))
     except Exception as e:  # noqa: BLE001
-        return back(name, f"Error: {e}") if name else (303, "", "text/html", f"/?msg={quote('Error: ' + str(e))}")
+        return back(name, f"Error: {e}") if name else (303, "", "text/html", f"/filings?msg={quote('Error: ' + str(e))}")
     return None

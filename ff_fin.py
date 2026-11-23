@@ -379,8 +379,12 @@ def statements(folder):
         res["notes"] = []
         if "Notes" in wb.sheetnames:
             ws = wb["Notes"]
-            for r in ws.iter_rows(values_only=True):
+            for i, r in enumerate(ws.iter_rows(values_only=True), 1):
+                if ws.row_dimensions[i].hidden:
+                    continue  # a note with no figures either year is hidden in the workbook
                 if r and isinstance(r[0], (int, float)) and isinstance(r[1], str):
+                    if res["notes"] and res["notes"][-1]["no"] == int(r[0]):
+                        continue  # a nil note keeps the number of the note before it: only its heading is left
                     res["notes"].append({"no": int(r[0]), "title": r[1].strip()})
         return res
     return app._cached("ffst", p, read)
@@ -694,7 +698,7 @@ def docs_ready(folder):
         return False, "python-docx is not installed: run setup.bat"
     cfg = load_cfg(folder)
     if not cfg.get("docs"):
-        return False, "This client's config has no 'docs' block yet (AGM date, document date, short name)"
+        return False, "The AGM date, the date of the documents and the company's short name are not entered yet"
     if not output(folder):
         return False, "Build the financials first"
     return True, ""

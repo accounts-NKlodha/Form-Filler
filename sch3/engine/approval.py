@@ -65,7 +65,7 @@ def analyse(cy_rows, py_rows, cfg):
             note = next((l[3] for l in ledgers if l[0].lower() == name.lower()), "") or \
                 next((x[3] for x in groups if x[0].lower() in (g.lower(), prim.lower())), "")
             reason = note
-            if appr: reason = f"Approved by {appr.get('by','')} on {appr.get('on','')}" + (f" - {note}" if note else "")
+            if appr: reason = f"Approved by {appr.get('by','')} on {appr.get('on','')}" + (f" - {note}" if note and not note.startswith("Approved by") else "")
         else:
             s = suggest(name, g, prim)
             if s:

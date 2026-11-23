@@ -164,7 +164,7 @@ def _legacy_css():
 .phead{border-bottom:0;padding-bottom:0;margin-bottom:0}.phead p{font-size:15px}.eyebrow{text-transform:none;letter-spacing:0;font-size:13px;font-weight:400}.eyebrow::before{display:none}
 .kpis{margin-bottom:0;gap:24px}.kpi{animation:none;box-shadow:none;padding:24px}.kpi .l,.prog .l,label.muted{text-transform:none;letter-spacing:0;font-size:13px;font-weight:500}
 .kpi .s,.pill,.chead .meta span,.chead .meta span.mono,.sidefoot{font-size:13px}.card h2{font-size:16px;margin:0 0 12px}
-.stepper{position:static;margin:0;box-shadow:none}.pill.on::before{animation:none}.drop{min-height:104px}
+.stepper{position:static;margin:0;box-shadow:none}.stepper .num,.num{font-size:13px}small{font-size:13px}.pill.on::before{animation:none}.drop{min-height:104px}
 button.primary,.btn.primary,button.go{background:var(--primary);border-color:var(--primary);color:var(--on-primary);height:40px}button.go::before{display:none}
 td button,td .btn{height:32px;font-size:13px;padding:0 12px}tr.active td{background:var(--muted)}code{font-size:13px}
 """)
@@ -704,7 +704,7 @@ def _ai_rows():
                 if files else "<span class=mut>None</span>")
         took = f"{r['seconds'] // 60} min {r['seconds'] % 60} s" if r.get("seconds") else ""
         out.append(f"<tr><td><a href=\"/ai/questions?c={quote(r['client'])}\">{esc(r['client'])}</a></td><td>{when(r['started'])}</td>"
-                   f"<td>{sent}</td><td>{r['questions'] or ''}</td><td>{got}</td><td>{esc(r['model'])}<div class=mut>{took}</div></td><td>{st}</td></tr>")
+                   f"<td>{sent}</td><td>{got}</td><td>{esc(r['model'])}<div class=mut>{took}</div></td><td>{st}</td></tr>")
     return out
 
 
@@ -760,8 +760,8 @@ def page_agents(show="all", msg="", qtab="jobs"):
         f"<a href=\"/agents?q={k}\" class=\"{'on' if k == qtab else ''}\">{t}{f' ({n[k]})' if n[k] else ''}</a>" for k, t in QTABS) + "</nav>"
     if qtab == "ai":
         table = (f"<div class=h>Every time documents were sent to the local model, and what came back. Nothing leaves the office network.</div>"
-                 f"<table><tr><th>Client</th><th>Sent</th><th>Documents sent</th><th>Questions</th><th>Answers received</th><th>Model</th><th>Status</th></tr>"
-                 f"{''.join(ai_rows) or '<tr><td colspan=7 class=mut>No runs yet. Start one from a client: Review financials, Documents.</td></tr>'}</table>"
+                 f"<table><tr><th>Client</th><th>Sent</th><th>Documents sent</th><th>Answers received</th><th>Model</th><th>Status</th></tr>"
+                 f"{''.join(ai_rows) or '<tr><td colspan=6 class=mut>No runs yet. Start one from a client: Review financials, Documents.</td></tr>'}</table>"
                  f"<p class=mut style=\"margin:12px 0 0\">Click a client to see each answer with the line it came from. Staff accept answers there; the model saves nothing by itself.</p>")
     else:
         what = ("Reading Tally, building Schedule III and drafting documents, one company at a time." if qtab == "jobs"
@@ -848,7 +848,7 @@ def page_audit(name="", slug="", cat="all", msg=""):
                  else tag(fl["status"].replace("-", " "), "badt" if fl["status"] in ("failed", "manual") else "") if fl else "<span class=mut>Not yet</span>")
         val = money(r["value"]) if isinstance(r["value"], (int, float)) else esc(r["value"])
         trs.append(f"<tr class=\"click{' sel' if i == 0 else ''}\" data-i={rows.index(r)} tabindex=0><td><b>{esc(r['label'][:70])}</b><div class=mut>{esc(r['code'])} · {esc(str(r['section'] or '')[:40])}</div></td>"
-                   f"<td class=n>{val}</td><td>{esc(r['picked'][:90])}</td><td>{esc(r['built'])}</td><td>{fcell}</td></tr>")
+                   f"<td class=n{'' if isinstance(r['value'], (int, float)) or len(str(r['value'])) < 14 else ' style=\"white-space:normal;overflow-wrap:anywhere\"'}>{val}</td><td>{esc(r['picked'][:90])}</td><td>{esc(r['built'])}</td><td>{fcell}</td></tr>")
     v = data.get("verified")
     job = data.get("job") or {}
     ctx = {"tb": data.get("tb") or {}, "fs": data.get("fs"), "verified": v, "srn": job.get("srn"), "jobStatus": job.get("status"),
