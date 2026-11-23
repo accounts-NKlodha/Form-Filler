@@ -13,6 +13,9 @@ from datetime import date, datetime, timedelta
 from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
+# Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
+RULES_VERSION = 2
+
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
     ("agm_held", "Was the AGM held for this financial year?", "Yes / No", lambda f, fs: "Yes"),
@@ -314,7 +317,7 @@ def derive(facts, answers, fs):
     eq = f.get("equity") or {}
     nominal = (eq.get("nominal") or [None])[0]
     auth_amt = _num(fs, "Notes:Share capital/Authorised share capital") or ((eq.get("amount") or [None])[0])
-    paid_amt = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or ((eq.get("amount") or [None, None, None, None])[3])
+    paid_amt = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or _num(fs, "BS:Share capital") or ((eq.get("amount") or [None, None, None, None])[3])
     changed = _yes(a.get("capital_changed"))
     if nominal and paid_amt is not None:
         d.set("NumberOfClassesEquity", str(eq.get("classes") or 1), LY)
@@ -555,7 +558,7 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     # EPS = profit for the year / equity shares; share capital raised = no change unless answered otherwise
     eq = (mgt7a_facts or {}).get("equity") or {}
     nominal = ((eq.get("nominal") or [None])[0]) or 10
-    paid = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up")
+    paid = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or _num(fs, "BS:Share capital")
     paid_py = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") if False else None
     shares = _num(fs, "Setup:Weighted avg. equity shares - current year") or ((paid / nominal) if paid else None)
     shares_py = _num(fs, "Setup:Weighted avg. equity shares - previous year") or shares

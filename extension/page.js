@@ -525,13 +525,42 @@
   }
   const before = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-  async function dismissSaved() {
-    await sleep(400);
-    for (const dlg of document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"]')) {
-      if (!isShown(dlg) || !/saved|success/i.test(dlg.innerText || '')) continue;
-      const ok = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && /^(ok|close|okay)$/i.test(strip(b.innerText || b.value || '')));
-      if (ok) { ok.click(); await sleep(300); }
+  // The portal's "Data Added Successfully" box can take a few seconds to come up: wait for it, then press its OK.
+  async function dismissSaved(maxMs = 4000) {
+    for (let t = 0; t <= maxMs; t += 400) {
+      await sleep(400);
+      let hit = false;
+      for (const dlg of document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"], [class*="popup"], [class*="Popup"]')) {
+        if (!isShown(dlg) || !/saved|success|added/i.test(dlg.innerText || '')) continue;
+        const ok = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && /^(ok|close|okay)$/i.test(strip(b.innerText || b.value || '')));
+        if (ok) { ok.click(); hit = true; await sleep(300); }
+      }
+      if (hit) return true;
     }
+    return false;
+  }
+
+  // Fields the tool typed in this tab (key -> times). A value the portal empties again after Save is typed
+  // once more and then left alone, so a run can never go round the same section for ever.
+  const given = {};
+
+  // After a Save: empty, editable fields that show the portal's own "Please enter ..." message.
+  function saveErrors(skip) {
+    const need = [];
+    for (const m of document.querySelectorAll('[id^="guideContainer"] div, [id^="guideContainer"] span, [id^="guideContainer"] p')) {
+      if (m.childElementCount || !/^please (enter|select|provide|choose)|is mandatory|is required/i.test(strip(m.textContent || '')) || !isShown(m)) continue;
+      // Walk up from the message to the nearest wrapper that holds an input (the field's own box, or its table cell).
+      let el = null;
+      for (let box = m.parentElement, up = 0; box && up < 4 && !el; box = box.parentElement, up++) {
+        const ins = box.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), select, textarea');
+        if (ins.length === 1) el = ins[0];
+        else if (ins.length > 1) break;
+      }
+      if (!el || !isShown(el) || el.disabled || el.readOnly || strip(el.value || '') || (skip && skip.has(el))) continue;
+      const lab = safe(() => domLabel(el), '') || strip(m.textContent || '');
+      if (!need.includes(lab)) need.push(lab);
+    }
+    return need;
   }
 
   function findSave() {
@@ -592,6 +621,7 @@
     if (g) safe(() => g.visit(c => { const id = safe(() => c.id); if (id) map[keyOf(id)] = c; }));
     const total = plan.fields.length + (plan.tables || []).reduce((n, t) => n + t.rows.reduce((m, r) => m + r.length, 0), 0);
     let done = 0, lastSection = null;
+    if (plan.autoSave) await dismissSaved(400);  // a "saved" box left open from the round before
 
     for (const e of plan.errors || []) log.push({ ...e, status: 'failed', method: 'excel' });
 
@@ -603,8 +633,10 @@
       const c = cmpOf(f), els = widgets((c && safe(() => c.id)) || f.domBase);
       if (!els.some(isShown) || els.some(e => e.readOnly || e.disabled) || (c && safe(() => c.readOnly))) return false;
       if (f.type === 'checkbox' && typeof f.value === 'boolean') return els[0].checked !== f.value;
+      if ((given[f.key] || 0) >= 2) return false;  // typed twice, emptied twice by the portal: leave it
       return !hasValue(f, els, c);
     };
+    let cleared = 0;
     let stopAt = null;
     const firstWork = plan.fields.find(needsWork);
     const firstEl = firstWork && elOf(firstWork);
@@ -644,11 +676,20 @@
       const quickEl = elOf(f);
       if (!quickEl && !f.copyFrom) { log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'other-page', msg: 'not on this page' }); done++; await runSectionTables(f); continue; }
       progress({ done, total, label: f.label, section: f.sectionText });
-      if (needsWork(f)) await jitter(150, 420);
       let cmp = map[f.key] || null;
       if (!cmp && g && f.som) cmp = safe(() => g.resolveNode(f.som));
+      if ((given[f.key] || 0) >= 2 && !(f.type === 'checkbox' && typeof f.value === 'boolean')) {
+        const els2 = widgets((cmp && safe(() => cmp.id)) || f.domBase);
+        if (els2.some(isShown) && !els2.some(e => e.readOnly || e.disabled) && !hasValue(f, els2, cmp)) {
+          cleared++;
+          log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'unchanged', el: els2[0], msg: 'the portal emptied this field after Save twice: left blank' });
+          done++; await runSectionTables(f); continue;
+        }
+      }
+      if (needsWork(f)) await jitter(150, 420);
       let r;
       try { r = await fillOneSafe(g, f, cmp); } catch (e) { r = { code: f.code, key: f.key, label: f.label, status: 'failed', msg: String(e && e.message || e) }; }
+      if (r.status === 'filled') given[f.key] = (given[f.key] || 0) + 1;
       r.retry = () => fillOneSafe(g, f, map[f.key] || (g && f.som ? safe(() => g.resolveNode(f.som)) : null));
       log.push(r);
       done++;
@@ -800,6 +841,7 @@
           await sleep(2500);
           await dismissSaved();
           save.msg = 'Saved';
+          if (cleared) { save.cleared = cleared; save.msg = `Saved (${cleared} previous-year fields the portal emptied again were left blank)`; }
           // Read-only fields the portal fills itself don't hold the page back: only fields below an unclicked Save do.
           save.more = log.some(e => e.status === 'next-section');
           // A field hidden by an earlier answer may open once that answer is saved: give it one more round.
@@ -807,7 +849,15 @@
           const fresh = log.filter(e => e.status === 'hidden' && !seen.has(e.key + '|' + e.label));
           fresh.forEach(e => seen.add(e.key + '|' + e.label));
           if (fresh.length) save.more = true;
-          const next = plan.autoNext && !save.more && [...document.querySelectorAll('button, [type="button"]')]
+          // The portal refused the Save: it shows "Please enter ..." under empty fields the tool has no value for.
+          const later = new Set(plan.fields.map(f => elOf(f)).filter(el => el && beyond(el)));
+          const errs = saveErrors(later);
+          if (errs.length) {
+            save.stuck = true;
+            save.need = errs.slice(0, 8);
+            save.msg = `The portal did not accept this Save: ${errs.length} empty field${errs.length > 1 ? 's' : ''} on this page show${errs.length > 1 ? '' : 's'} "Please enter"`;
+          }
+          const next = !save.stuck && plan.autoNext && !save.more && [...document.querySelectorAll('button, [type="button"]')]
             .find(b => isShown(b) && !b.disabled && /^next$/i.test(strip(b.innerText || b.value || '')) && !BLOCKED.test(strip(b.innerText || b.value || '')));
           if (next) {
             await jitter(400, 800);
@@ -815,7 +865,7 @@
             save.next = true;
             save.msg = 'Saved and moved to the next page';
             await sleep(3000);
-          } else if (plan.watchSubmit && !save.more) {
+          } else if (plan.watchSubmit && !save.more && !save.stuck) {
             const hasSubmit = [...document.querySelectorAll('button, [type="button"], [type="submit"]')]
               .some(b => isShown(b) && /^submit$/i.test(strip(b.innerText || b.value || '')));
             if (hasSubmit) save.lastPage = true;  // filing queue: staff click Submit here; content.js waits for the SRN

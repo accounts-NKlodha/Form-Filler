@@ -688,10 +688,12 @@ def refresh_questions(folder):
     if "aoc4" in forms:
         want |= {q[0] for q in smart.QUESTIONS_AOC4}
     have = {q[0] for q in questions(folder)[0]}
-    if not want - have:
+    stale = bool(forms) and load(folder).get("rules") != smart.RULES_VERSION
+    if not want - have and not stale:
         return False
     try:
         build(folder)
+        save(folder, rules=smart.RULES_VERSION)
         return True
     except Exception:  # noqa: BLE001  (workbook open in Excel, form not captured): the old questions stay
         return False

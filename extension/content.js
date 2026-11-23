@@ -62,7 +62,12 @@
     document.body.appendChild(box);
     return box;
   }
+  // The side panel asks this tab how it is every 3 s while it is open. It shows the same text as the page box,
+  // so with the panel open plain progress is not drawn over the form: the box comes up only when it has buttons.
+  let panelSeen = 0;
+  const panelOpen = () => Date.now() - panelSeen < 8000;
   function status(html, buttons = []) {
+    if (!buttons.length && panelOpen()) { close(); mirror(html, []); return; }
     const b = panel();
     b.innerHTML = `<div style="font-weight:600;margin-bottom:4px">MCA filler <span style="font-weight:400;opacity:.7">v${chrome.runtime.getManifest().version}</span></div><div>${html}</div>`;
     if (buttons.length) {
@@ -161,11 +166,20 @@
       return;
     }
     const cells = (plan.tables || []).reduce((n, t) => n + t.rows.reduce((m, r) => m + r.length, 0), 0);
-    status(`Client: <b>${esc(plan.client)}</b><br>Form: <b>${esc((plan.slug || '').toUpperCase())}</b><br>` +
+    const clicked = !autorun && window.__mcaClicked;
+    if (clicked && panelOpen()) {
+      // Clicked in the side panel, which shows the client and has Stop: start straight away, nothing on the page.
+      window.__mcaClicked = false;
+      stopLoop = false;
+      status(`Filling <b>${esc(plan.client)}</b> · ${esc((plan.slug || '').toUpperCase())}`);
+      runFill(plan);
+      return;
+    }
+    if (!clicked && !(autorun && plan.autoAdvance)) status(`Client: <b>${esc(plan.client)}</b><br>Form: <b>${esc((plan.slug || '').toUpperCase())}</b><br>` +
       `${plan.fields.length} fields, ${cells} table cells${(plan.errors || []).length ? `, <span style="color:#ffb4a2">${plan.errors.length} Excel errors</span>` : ''}<br>` +
       `<small>Workbook: ${esc(plan.workbook || '')}</small><br>Fill now? It fills this page and then shows you which Save to click. It never clicks Submit.`,
       [['Fill', () => runFill(plan), true], ['Cancel', close]]);
-    if (!autorun && window.__mcaClicked) {
+    if (clicked) {
       // Staff clicked Form Filler themselves: no second question. Three seconds to see the client's name and stop.
       window.__mcaClicked = false;
       stopLoop = false;
@@ -262,7 +276,7 @@
     // Plans with autoSave (ADT-1): keep going section by section and page by page until a round makes no progress.
     const idleNow = count.filled ? 0 : idle + 1;
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
-    if (plan.autoSave && res.save.clicked && (res.save.next || res.save.more) && !count.failed && round < 20 && idleNow < 2 && !stopLoop) {
+    if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 20 && idleNow < 2 && !stopLoop) {
       status(`Round ${round + 1}: filled <b>${count.filled || 0}</b>. ${esc(res.save.msg)}. Continuing… <small>(Alt+Shift+X stops)</small>`);
       setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow); else status('Stopped.', [['Close', close]]); }, 2500);
       return;
@@ -474,6 +488,7 @@
       return false;
     }
     if (!msg || msg.type !== 'mcafill-cmd' || !hasForm()) return false;
+    if (msg.cmd === 'probe') panelSeen = Date.now();
     if (msg.cmd === 'probe') reply({ ok: true, slug: slug(), busy, version: chrome.runtime.getManifest().version });
     else reply({ ok: true, slug: slug(), result: command(msg.cmd) });
     return false;

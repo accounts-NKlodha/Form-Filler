@@ -994,6 +994,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/log":
                 log = json.loads(self._body())
                 act = state().get("active")
+                who = re.sub(r"\s*\([^()]*\)\s*$", "", str(log.get("client") or ""))
+                try:
+                    cf = app.folder_of(who) if who else None
+                    if cf and cf.is_dir():
+                        act = str((cf / "x").relative_to(ROOT.resolve()))
+                except Exception:  # noqa: BLE001
+                    pass
                 folder = (ROOT / act).parent / "logs" if act else ROOT / "logs"
                 if str(log.get("slug", "")).startswith("adt"):
                     folder = ROOT / "ADT1" / "logs"
