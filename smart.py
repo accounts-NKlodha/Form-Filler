@@ -518,6 +518,14 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     d.set("whetherAnyExtension", "Yes" if _yes(a.get("agm_extension")) else "No", Q)
     d.set("WhetherCompanyIsSubsidiary", f.get("is_subsidiary") or "No", LY)
     d.set("whetherCompanyHasSubsidiary", f.get("has_subsidiary") or "No", LY)
+    # The auditor block opens the rest of the form: the portal fills the auditor's details from the ADT-1 SRN.
+    d.set("SRNOfFormADT1", f.get("adt1_srn"), LY)
+    d.set("numberAuditors", str(f["n_auditors"]) if f.get("n_auditors") else None, LY)
+    if f.get("adt1_srn"):
+        d.todo.append(f"Check the ADT-1 SRN {f['adt1_srn']} (carried from last year's AOC-4) is still the current appointment.")
+    else:
+        d.todo.append("Type the SRN of Form ADT-1 and the number of auditors on the portal: last year's AOC-4 did not give them, "
+                      "and the sections after the auditor's details stay locked until they are saved.")
     cat = (f.get("auditor") or {}).get("category")
     d.set("categoryOfAuditor", cat, LY)
     if f.get("industry"):

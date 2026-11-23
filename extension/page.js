@@ -816,7 +816,24 @@
             save.msg = 'Saved and moved to the next page';
             await sleep(3000);
           } else if (plan.watchSubmit && !save.more) {
-            save.lastPage = true;  // filing queue: staff click Submit here; content.js waits for the SRN
+            const hasSubmit = [...document.querySelectorAll('button, [type="button"], [type="submit"]')]
+              .some(b => isShown(b) && /^submit$/i.test(strip(b.innerText || b.value || '')));
+            if (hasSubmit) save.lastPage = true;  // filing queue: staff click Submit here; content.js waits for the SRN
+            else {
+              // Not the last page, yet nothing left to fill and no Next: the portal is holding sections locked
+              // until a mandatory field on this page is entered and saved. Name those fields for staff.
+              const need = [];
+              for (const el of document.querySelectorAll('[id^="guideContainer"] input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), [id^="guideContainer"] select')) {
+                if (!isShown(el) || el.disabled || el.readOnly || strip(el.value || '')) continue;
+                const box = el.closest('[class*="guideFieldNode"], [class*="guidefield"], [class*="guideField"]');
+                const lab = strip(((box && box.querySelector('label, [class*="guideFieldLabel"]')) || {}).innerText || '');
+                if (lab.includes('*') && !need.includes(lab)) need.push(lab);
+                if (need.length >= 6) break;
+              }
+              save.stuck = true;
+              save.need = need;
+              save.msg = locked ? `Saved, but ${locked} fields further down are still locked by the portal` : 'Saved, but the portal shows no Next button';
+            }
           }
         }
       }

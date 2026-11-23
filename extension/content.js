@@ -250,6 +250,15 @@
         [['Next client', () => queueNext(plan, 'saved', '', count, 'SRN not read'), true], ['Wait again', () => runFill(plan, true)], ['Close', close]]);
       return;
     }
+    if (res.save.stuck && !stopLoop) {
+      const need = (res.save.need || []).map(n => `<li>${esc(n)}</li>`).join('');
+      status(`<b>${esc(plan.client)}</b>: this page needs you before the tool can go on.<br>${esc(res.save.msg || '')}.` +
+        (need ? `<br>Empty mandatory fields on this page:<ul style="margin:6px 0 0 16px;padding:0;max-height:160px;overflow:auto">${need}</ul>` : '') +
+        `<small>Type them on the portal, click that section's Save, then Fill again. Nothing was submitted.</small>`,
+        [['Fill again', () => runFill(plan, true), true]].concat(plan.watchSubmit
+          ? [['Skip to next client', () => queueNext(plan, 'held', '', count, (res.save.need || [])[0] || res.save.msg || 'page locked')]] : [], [['Close', close]]));
+      return;
+    }
     if (plan.watchSubmit && !stopLoop && (count.failed || !res.save.clicked)) {
       const bad = res.log.filter(e => ['failed', 'manual'].includes(e.status)).slice(0, 8)
         .map(e => `<li>${esc(e.code || '')} ${esc(e.label)}: ${esc(e.msg || e.status)}</li>`).join('');
