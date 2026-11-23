@@ -144,6 +144,9 @@ tr.sub td{background:var(--surface);font-size:13px;padding:5px 8px}tr.sub td:fir
 .pick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}.pick:focus-within{outline:2px solid var(--brass)}
 .sec{font-size:13px;font-weight:600;color:var(--mfg);margin:20px 0 0;padding:0 8px 8px}.sec:first-of-type{margin-top:4px}
 .bar{height:6px;background:var(--muted);border-radius:3px;overflow:hidden;margin:8px 0 4px}.bar>i{display:block;height:6px;background:var(--good)}
+@media (min-width:1101px) and (min-height:640px){main:has(>.fit){height:100vh;box-sizing:border-box;overflow:hidden;padding-bottom:24px}
+.fit{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}.fit>.card{overflow-y:auto;min-height:0;scrollbar-gutter:stable}
+.fit>.card th{position:sticky;top:-24px;background:var(--card);padding-top:8px;z-index:1}}
 .total td{font-weight:600}.hd td{font-weight:600;color:var(--mfg);background:var(--surface)}
 """
 
@@ -372,7 +375,7 @@ def page_review(name="", tab="", msg=""):
     fyl = fy_label(folder)
     body = (head(f"Step 2 of 3 · {esc(name)} · {fyl} · client {i + 1} of {len(names)}", "Review financials", acts)
             + _flow(folder, q, pts, v) + tabs
-            + f"""<div class=g12><div class="card s7">{left}</div>
+            + f"""<div class="g12 fit"><div class="card s7">{left}</div>
 <div class="card s5"><div class=h>Review points from the agent. Each says what does not agree and what to do. All must be cleared before the tick.</div>{''.join(pts_html)}
 <p class=mut style="margin:16px 0 0">The tick is recorded with your name and the time. Only ticked clients go to step 3. Getting data or building again removes the tick.</p></div></div>""")
     return shell(f"Review: {name}", body, "/review", msg)
