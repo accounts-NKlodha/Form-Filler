@@ -272,6 +272,7 @@ def plan(slug):
         raise e
     m = app._mca()
     folder = app.folder_of(j["client"])
+    app.refresh_questions(folder)
     cin = app.load(folder).get("cin", "")
     p = m.make_plan(app.inputs_path(folder), slug)
     p["client"] = f"{j['client']} ({cin})"

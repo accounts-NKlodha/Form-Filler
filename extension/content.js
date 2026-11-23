@@ -165,6 +165,24 @@
       `${plan.fields.length} fields, ${cells} table cells${(plan.errors || []).length ? `, <span style="color:#ffb4a2">${plan.errors.length} Excel errors</span>` : ''}<br>` +
       `<small>Workbook: ${esc(plan.workbook || '')}</small><br>Fill now? It fills this page and then shows you which Save to click. It never clicks Submit.`,
       [['Fill', () => runFill(plan), true], ['Cancel', close]]);
+    if (!autorun && window.__mcaClicked) {
+      // Staff clicked Form Filler themselves: no second question. Three seconds to see the client's name and stop.
+      window.__mcaClicked = false;
+      stopLoop = false;
+      let n = 3, done = false;
+      const go = () => { if (!done) { done = true; runFill(plan); } };
+      const tick = () => {
+        if (done) return;
+        if (stopLoop) { done = true; status('Stopped. Click Form Filler to carry on.', [['Close', close]]); return; }
+        if (n <= 0) { go(); return; }
+        status(`Filling <b>${esc(plan.client)}</b> · ${esc((plan.slug || '').toUpperCase())} in ${n} s.<br><small>${plan.fields.length} fields. It never clicks Submit.</small>`,
+          [['Start now', go, true], ['Stop', () => { stopLoop = true; tick(); }]]);
+        n--;
+        setTimeout(tick, 1000);
+      };
+      tick();
+      return;
+    }
     if (autorun && plan.autoAdvance && plan.autoContinue) {
       autorun = false;
       stopLoop = false;
@@ -425,7 +443,7 @@
     }
     if (busy) return 'busy';
     if (cmd === 'dump') doDump();
-    else if (cmd === 'fill') doFill();
+    else if (cmd === 'fill') { window.__mcaClicked = true; doFill(); }
     else if (cmd === 'values') toggleSide();
     else return 'unknown';
     return 'ok';

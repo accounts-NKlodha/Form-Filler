@@ -606,6 +606,7 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
             return (f"<div class=h>Questions not prepared yet</div><form method=post action=/ff/prepare><input type=hidden name=c value=\"{esc(name)}\">"
                     f"<button class=sm {'disabled' if not ff_fin.output(folder) else ''}>Prepare questions</button></form>"
                     "<p class=mut>Most answers come pre-filled from last year's forms and Setup.</p>")
+        app.refresh_questions(folder)  # a newer version of the app may ask more (ADT-1 SRN, number of auditors)
         qs, _ = app.questions(folder)
         answered = set(app.load(folder).get("answered") or [])
         trs = []

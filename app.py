@@ -676,6 +676,27 @@ def build(folder):
     return msg
 
 
+def refresh_questions(folder):
+    """Rebuild the inputs workbook when the app now asks a question it does not hold yet (saved answers are kept).
+    Returns True when it was rebuilt."""
+    import smart
+    p = inputs_path(folder)
+    if not p.exists():
+        return False
+    forms = [s for s in (load(folder).get("forms") or []) if s in SMART]
+    want = {q[0] for q in smart.QUESTIONS} if forms else set()
+    if "aoc4" in forms:
+        want |= {q[0] for q in smart.QUESTIONS_AOC4}
+    have = {q[0] for q in questions(folder)[0]}
+    if not want - have:
+        return False
+    try:
+        build(folder)
+        return True
+    except Exception:  # noqa: BLE001  (workbook open in Excel, form not captured): the old questions stay
+        return False
+
+
 def save_answers(folder, form):
     p = inputs_path(folder)
     wb = openpyxl.load_workbook(p)
