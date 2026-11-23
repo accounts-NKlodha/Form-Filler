@@ -222,7 +222,7 @@
   }
 
   let stopLoop = false, autorun = false;
-  async function runFill(plan, force = false, round = 0, idle = 0) {
+  async function runFill(plan, force = false, round = 0, idle = 0, left = -1) {
     if (round === 0) stopLoop = false;
     // Plans that bring their attachments (ADT-1): upload the ones on this page that are still empty.
     const attachLog = [];
@@ -274,11 +274,13 @@
     };
     const sent = await server('/log', log);
     // Plans with autoSave (ADT-1): keep going section by section and page by page until a round makes no progress.
-    const idleNow = count.filled ? 0 : idle + 1;
+    // Progress = something typed, or fewer fields still waiting below a Save (a section that already held its values).
+    const leftNow = count['next-section'] || 0;
+    const idleNow = (count.filled || (left >= 0 && leftNow < left)) ? 0 : idle + 1;
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
-    if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 20 && idleNow < 2 && !stopLoop) {
+    if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 40 && idleNow < 2 && !stopLoop) {
       status(`Round ${round + 1}: filled <b>${count.filled || 0}</b>. ${esc(res.save.msg)}. Continuing… <small>(Alt+Shift+X stops)</small>`);
-      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow); else status('Stopped.', [['Close', close]]); }, 2500);
+      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow, leftNow); else status('Stopped.', [['Close', close]]); }, 2500);
       return;
     }
     // Filing queue: last page saved. Staff click Submit; we wait for the SRN, then open the next client's form.
