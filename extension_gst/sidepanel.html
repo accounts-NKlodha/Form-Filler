@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GST portal reader</title>
+<style>
+body{margin:0;padding:16px;font:14px/20px "IBM Plex Sans",system-ui,sans-serif;color:#1b1d21;background:#f7f7f5;display:flex;flex-direction:column;gap:16px}
+h1{font-size:16px;line-height:22px;margin:0;font-weight:600}
+p{margin:0}.mut{color:#5c5f66;font-size:13px}
+.card{background:#fff;border:1px solid #dcdcd7;border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#5c5f66}
+label.c{flex-direction:row;align-items:center;gap:8px;color:#1b1d21;font-size:14px}
+input[type=text],select{font:inherit;height:36px;padding:0 10px;border:1px solid #c9c9c4;border-radius:6px;background:#fff;color:#1b1d21}
+input[type=checkbox]{width:16px;height:16px}
+button{font:inherit;height:40px;padding:0 16px;border-radius:6px;border:1px solid #1b1d21;background:#1b1d21;color:#fff;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid #a8842c;outline-offset:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px 4px;border-top:1px solid #eeeeea;vertical-align:top}th{font-weight:500;color:#5c5f66;border-top:0}
+td.n{text-align:right;white-space:nowrap}
+#log{font-size:13px;white-space:pre-wrap;max-height:240px;overflow:auto}
+</style>
+</head>
+<body>
+<h1>GST portal reader</h1>
+<div class="card">
+  <p>1. Log in to the GST portal yourself and open <b>Services, Returns, Returns dashboard</b>.</p>
+  <p>2. For GSTR-2B: on the dashboard pick any month, press Search, then <b>Download</b> on the GSTR-2B tile. Leave that tab open.</p>
+  <p>3. Press Read the year.</p>
+  <p class="mut">Read only. This never saves, submits, files or pays on the portal.</p>
+</div>
+<div class="card">
+  <label>Financial year<select id="fy"></select></label>
+  <label>Your name (recorded with each file)<input type="text" id="who" autocomplete="name"></label>
+  <label class="c"><input type="checkbox" id="again">Read again the months already in the folder</label>
+  <label class="c"><input type="checkbox" id="alive">Keep my portal session open while this panel is open (up to 40 minutes)</label>
+  <button id="go">Read the year</button>
+  <p id="state" class="mut" role="status" aria-live="polite">Not started.</p>
+</div>
+<div class="card">
+  <table>
+    <thead><tr><th>Return</th><th class="n">In folder</th><th>This run</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="log" class="mut"></div>
+</div>
+<script src="sidepanel.js"></script>
+</body>
+</html>

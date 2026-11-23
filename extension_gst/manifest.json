@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "GST portal reader (Form Filler)",
+  "version": "0.1.0",
+  "description": "After staff log in to the GST portal, reads a year's GSTR-1, 2A, 2B and 3B and files them in the client folder through Form Filler on this PC. Read only: never saves, submits, files or pays.",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["sidePanel", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1:8742/*", "https://*.gst.gov.in/*"],
+  "action": { "default_title": "Open the GST portal reader" },
+  "side_panel": { "default_path": "sidepanel.html" }
+}
