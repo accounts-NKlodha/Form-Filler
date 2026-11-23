@@ -315,7 +315,7 @@ location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error
 
 # In the order the work is done: last year's papers in, the form inputs answered, then the figures reviewed.
 TABS = [("docs", "Documents"), ("questions", "Inputs for the forms"), ("mapping", "Mapping"), ("bs", "Balance sheet"),
-        ("pl", "Profit and loss"), ("notes", "Notes to accounts"), ("reports", "Reports and meetings")]
+        ("pl", "Profit and loss"), ("notes", "Notes to accounts"), ("reports", "Reports and meetings"), ("preview", "Form preview")]
 
 
 def _flow(folder, q, pts, v):
@@ -637,7 +637,51 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
                         f"(notice.docx, board report.docx, auditors report.docx, sap.docx, Shareholders list.xlsx, Directors list.xlsx).</p>")
                 + (f"<p><b>Drafted</b></p><ul>{lst}</ul>" if made else "")
                 + (f"<p><b>To check before signing</b></p><ul>{fl}</ul>" if fl else ""))
+    if tab == "preview":
+        return _preview(folder)
     return ""
+
+
+SRC_WORD = {"tally": "Tally", "lastyear": "Last year's form", "staff": "Typed by staff", "ai": "Local AI, confirmed by staff", "auto": "Worked out"}
+
+
+def _preview(folder):
+    """Every value Form Filler will type on MCA, laid out field by field in form order, with its source in the same box."""
+    if not app.inputs_path(folder).exists():
+        return "<p class=mut>The form values are prepared after Get data. Nothing to preview yet.</p>"
+    forms = [s for s in (app.load(folder).get("forms") or []) if s in app.SMART]
+    out = ["<div class=h>What will be typed on MCA, and where each value came from</div>"
+           "<p>Read-only. To change a value, correct its source: the mapping, an answer on Inputs for the forms, or the document it was read from. "
+           "Fields the portal fills by itself (company name, auditor details from the ADT-1 SRN) are not listed.</p>"]
+    for n, slug in enumerate(forms):
+        try:
+            rows = ff_audit.chain(folder, slug)["rows"]
+        except Exception as e:  # noqa: BLE001
+            out.append(f"<p class=mut>{FORM_LABEL.get(slug, slug)}: could not read the form values ({esc(str(e))}).</p>")
+            continue
+        cells, last = [], None
+        for r in rows:
+            sec = r.get("section") or ""
+            if sec != last and sec not in ("", "(general)"):
+                cells.append(f"<div style=\"grid-column:1/-1;font-weight:600;margin-top:8px\">{esc(sec)}</div>")
+            last = sec
+            v = r["value"]
+            val = money(v) if isinstance(v, (int, float)) else esc(v)
+            src = SRC_WORD.get(r["category"], r["category"])
+            how = r.get("built") or r.get("picked") or ""
+            cells.append(
+                f"<div><div style=\"margin-bottom:4px\">{esc(r['label'][:110])}</div>"
+                f"<div style=\"border:1px solid var(--line,#d9d9d4);border-radius:6px;padding:8px 10px;background:#fff\">"
+                f"<div style=\"font-weight:600;overflow-wrap:anywhere\">{val if str(val).strip() else '&nbsp;'}</div>"
+                f"<div class=mut style=\"margin-top:4px;overflow-wrap:anywhere\">{esc(src)}{': ' + esc(str(how)[:120]) if how and how != src else ''}</div></div></div>")
+        by = {}
+        for r in rows:
+            by[r["category"]] = by.get(r["category"], 0) + 1
+        mix = ", ".join(f"{c} {SRC_WORD.get(k, k).lower()}" for k, c in by.items())
+        out.append(f"<details {'open' if n == 0 else ''} style=\"margin-top:16px\"><summary style=\"cursor:pointer;font-weight:600\">"
+                   f"{FORM_LABEL.get(slug, slug)}: {len(rows)} fields <span class=mut style=\"font-weight:400\">({mix})</span></summary>"
+                   f"<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px 24px;margin-top:16px\">{''.join(cells)}</div></details>")
+    return "".join(out)
 
 
 # ---------------------------------------------------------------- 3 File on MCA
