@@ -117,6 +117,8 @@ SETUP_ANSWERS = {
     "phone": "Telephone number with STD code",
     "board_meetings": "Board meeting dates",
     "designated_din": "DIN of designated person",
+    "adt1_srn": "SRN of Form ADT-1",
+    "n_auditors": "Number of auditors",
 }
 
 # Setup rows that stand in for last year's filed AOC-4 when it is not in the client folder.
@@ -460,6 +462,10 @@ QUESTIONS_AOC4 = [
     ("related_party", "Any transactions with related parties this year?", "Yes / No", lambda f, fs: _d(f, "related_party") or "No"),
     ("ca_cop", "Certificate of practice number of the certifying CA", "number", lambda f, fs: None),
     ("ca_fellow", "Certifying CA is Associate or Fellow?", "Associate / Fellow", lambda f, fs: None),
+    # The portal keeps every section after the auditor's details locked until these two are saved.
+    ("adt1_srn", "SRN of Form ADT-1 (the auditor's current appointment)", "SRN, as on the ADT-1 challan. Last year's is suggested: change it if the auditor was appointed again",
+     lambda f, fs: _d(f, "adt1_srn")),
+    ("n_auditors", "Number of auditors", "number", lambda f, fs: str(_d(f, "n_auditors")) if _d(f, "n_auditors") else "1"),
 ]
 
 
@@ -519,13 +525,13 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     d.set("WhetherCompanyIsSubsidiary", f.get("is_subsidiary") or "No", LY)
     d.set("whetherCompanyHasSubsidiary", f.get("has_subsidiary") or "No", LY)
     # The auditor block opens the rest of the form: the portal fills the auditor's details from the ADT-1 SRN.
-    d.set("SRNOfFormADT1", f.get("adt1_srn"), LY)
-    d.set("numberAuditors", str(f["n_auditors"]) if f.get("n_auditors") else None, LY)
-    if f.get("adt1_srn"):
-        d.todo.append(f"Check the ADT-1 SRN {f['adt1_srn']} (carried from last year's AOC-4) is still the current appointment.")
-    else:
-        d.todo.append("Type the SRN of Form ADT-1 and the number of auditors on the portal: last year's AOC-4 did not give them, "
-                      "and the sections after the auditor's details stay locked until they are saved.")
+    srn = str(a.get("adt1_srn") or "").strip().upper()
+    d.set("SRNOfFormADT1", srn or f.get("adt1_srn"), Q if srn else LY)
+    n_aud = str(a.get("n_auditors") or "").strip().split(".")[0]
+    d.set("numberAuditors", n_aud or (str(f["n_auditors"]) if f.get("n_auditors") else None), Q if n_aud else LY)
+    if not (srn or f.get("adt1_srn")):
+        d.todo.append("Answer \"SRN of Form ADT-1\" on Inputs for the forms: the sections after the auditor's details stay locked "
+                      "on the portal until it is saved.")
     cat = (f.get("auditor") or {}).get("category")
     d.set("categoryOfAuditor", cat, LY)
     if f.get("industry"):
