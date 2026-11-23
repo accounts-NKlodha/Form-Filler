@@ -933,7 +933,8 @@ class Handler(BaseHTTPRequestHandler):
             try:  # filing queue running: the job's plan, with the loop flags
                 qp = app._queue().plan(slug)
             except Exception as e:  # noqa: BLE001
-                return self._json(409, {"error": str(e)})
+                return self._json(409, {"error": str(e), "canSwitch": bool(getattr(e, "can_switch", False)),
+                                        "other": getattr(e, "other", ""), "slug": slug})
             if qp:
                 return self._json(200, qp)
             active = state().get("active")

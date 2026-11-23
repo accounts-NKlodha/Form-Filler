@@ -238,6 +238,25 @@ def clear_done():
     save(q)
 
 
+def switch(slug):
+    """Staff opened another queued form in the MCA tab: fill that one now. The form that was being filled goes back
+    to waiting (its draft stays saved on the portal) and is taken up again in its turn."""
+    q, j = current()
+    cand = [x for x in q["jobs"] if x["slug"] == slug and x["status"] in ("queued", "held")]
+    if not cand:
+        raise ValueError(f"no {app.FORM_LABEL.get(slug, slug)} is waiting in the queue")
+    nxt = next((x for x in cand if j and x["client"] == j["client"]), cand[0])  # the same client's form first
+    if j and j["status"] == "filling":
+        j["status"] = "queued"
+        j["note"] = "Set aside part way: draft saved on MCA"
+        j["updated"] = datetime.now().isoformat(timespec="seconds")
+        _audit(j, f"Set aside part way; {app.FORM_LABEL.get(slug, slug)} taken up first", by="staff")
+    _activate(q, nxt)
+    q["running"] = True
+    save(q)
+    return {"job": dict(nxt, url=form_url(slug))}
+
+
 # ---------------------------------------------------------------- the plan the extension gets
 
 def plan(slug):
@@ -246,8 +265,11 @@ def plan(slug):
     if not q["running"] or not j:
         return None
     if j["slug"] != slug:
-        raise ValueError(f"the filing queue is on {j['client']}'s {app.FORM_LABEL.get(j['slug'], j['slug'])}, "
-                         f"but this tab is {app.FORM_LABEL.get(slug, slug)}. Open that form, or pause the queue in the app")
+        e = ValueError(f"the filing queue is on {j['client']}'s {app.FORM_LABEL.get(j['slug'], j['slug'])}, "
+                       f"but this tab is {app.FORM_LABEL.get(slug, slug)}. Open that form, or pause the queue in the app")
+        e.can_switch = any(x["slug"] == slug and x["status"] in ("queued", "held") for x in q["jobs"])
+        e.other = app.FORM_LABEL.get(j["slug"], j["slug"])
+        raise e
     m = app._mca()
     folder = app.folder_of(j["client"])
     cin = app.load(folder).get("cin", "")

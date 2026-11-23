@@ -123,8 +123,19 @@
     status('Getting fill plan from the MCA filler server…');
     const r = await server('/plan?slug=' + encodeURIComponent(slug()));
     if (!r.ok) {
-      let msg = r.error || r.text || ('HTTP ' + r.status);
-      try { msg = JSON.parse(r.text).error || msg; } catch (e) { /* plain text */ }
+      let msg = r.error || r.text || ('HTTP ' + r.status), info = {};
+      try { info = JSON.parse(r.text) || {}; msg = info.error || msg; } catch (e) { /* plain text */ }
+      if (info.canSwitch) {
+        // Not an error: staff opened another queued form. Offer to fill this one now; the other waits its turn.
+        status(`The queue is filling <b>${esc(info.other)}</b>, and this tab is <b>${esc((info.slug || '').toUpperCase())}</b>.<br>` +
+          `Fill this form now? The ${esc(info.other)} draft stays saved on the portal and is taken up again afterwards.`,
+          [['Fill this form now', async () => {
+            const s = await server('/queue/switch', { slug: info.slug });
+            if (!s.ok) { status('Could not switch: ' + esc(s.error || s.text), [['Close', close]]); return; }
+            doFill();
+          }, true], ['Close', close]]);
+        return;
+      }
       status(`Could not get a plan: ${esc(msg)}<br><small>Start the server (start_server.bat) or load a plan file.</small>`,
         [['Load plan file…', pickFile, true], ['Close', close]]);
       return;

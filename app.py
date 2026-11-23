@@ -761,6 +761,11 @@ def handle_post(path, query, body, form):
             return 409, json.dumps({"error": "a file with that name is open in Excel: close it and try again"}), "application/json", None
         except Exception as e:  # noqa: BLE001
             return 400, json.dumps({"error": str(e)}), "application/json", None
+    if path == "/queue/switch":
+        try:
+            return 200, json.dumps(_queue().switch(str(json.loads(body or b"{}").get("slug") or "").lower()), default=str), "application/json", None
+        except Exception as e:  # noqa: BLE001
+            return 400, json.dumps({"error": str(e)}), "application/json", None
     if path in ("/queue/advance", "/api/queue/start", "/api/queue/pause"):
         try:
             Q = _queue()
