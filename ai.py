@@ -212,6 +212,27 @@ def stale_dates(folder, text, how, answer):
     return bad
 
 
+def propose(folder, text, how, last):
+    """This year's dates worked out from last year's: the same day one year on. '' when that does not fit the filing year.
+    A proposal only: staff confirm it against the minutes before saving."""
+    from datetime import date
+    out = []
+    for d, m, y in _DATE.findall(str(last or "")):
+        try:
+            v = date(int(y) + 1, int(m), int(d))
+        except ValueError:
+            try:
+                v = date(int(y) + 1, int(m), int(d) - 1)  # 29 February
+            except ValueError:
+                continue
+        out.append(v)
+    text_ = ", ".join(v.strftime("%d/%m/%Y") for v in out)
+    if not out or stale_dates(folder, text, how, text_):
+        return "", ""
+    sun = [f"{v:%d/%m/%Y}" for v in out if v.weekday() == 6]
+    return text_, (f"{', '.join(sun)} is a Sunday" if sun else "")
+
+
 def need_text(folder, text, how):
     start, end = fy_window(folder)
     return (f"a date from {start:%d/%m/%Y} to {end:%d/%m/%Y}" if date_rule(text, how) == "in" else f"a date after {end:%d/%m/%Y}")
@@ -414,9 +435,18 @@ def page_questions(name, msg=""):
             verdict, ai_cell = "", "<span class=mut>Not asked yet</span>"
         elif a.get("last_year"):
             stale += 1
-            verdict = ff_ui.tag("Enter this year's date", "need")
-            ai_cell = (f"<span class=mut>Last year's filing shows</span> <b>{app.esc(a['last_year'])}</b>"
-                       f"<div class=mut>Not used: this filing needs {need_text(folder, text, how)}.</div>")
+            prop, warn = propose(folder, text, how, a["last_year"])
+            if prop:
+                a["answer"] = prop
+                verdict = ff_ui.tag("Proposed from last year: confirm", "sug")
+                ai_cell = (f"<b>{app.esc(prop)}</b> <span class=mut>(proposed for this year)</span>"
+                           f"<div class=mut style=\"margin-top:4px\">Last year's filing shows {app.esc(a['last_year'])}; the same "
+                           f"day this year is proposed. Check it against the minutes before saving."
+                           f"{' Note: ' + app.esc(warn) + '.' if warn else ''}</div>")
+            else:
+                verdict = ff_ui.tag("Enter this year's date", "need")
+                ai_cell = (f"<span class=mut>Last year's filing shows</span> <b>{app.esc(a['last_year'])}</b>"
+                           f"<div class=mut>Not used: this filing needs {need_text(folder, text, how)}.</div>")
         elif not a.get("answer") or a.get("confidence") == "none":
             verdict, ai_cell = ff_ui.tag("Not in the documents"), "<span class=mut>No answer found</span>"
         else:
@@ -435,7 +465,7 @@ def page_questions(name, msg=""):
         rows.append(f"<tr><td style=\"width:30%\">{app.esc(text)}<div class=mut>{app.esc(how)}</div></td>"
                     f"<td style=\"width:36%\">{ai_cell}</td><td>{field}<div style=\"margin-top:6px\">{verdict}</div></td></tr>")
     summary = (f"<p style=\"margin:0\">{agree} agree with the saved answer · {differ} differ · {new} blanks filled · "
-               f"{stale} of last year's dates not used</p>") if ans else ""
+               f"{stale} dates proposed from last year's, to confirm</p>") if ans else ""
     q = quote(name)
     acts = (f"<a class=btn href=\"/review?c={q}&tab=questions\">Back to the inputs</a>"
             f"<form method=post action=/ai/run><input type=hidden name=c value=\"{app.esc(name)}\">"
@@ -443,8 +473,8 @@ def page_questions(name, msg=""):
     off = "" if s["enabled"] else "<p class=err>Local AI is off. Turn it on under Local AI settings.</p>"
     body = (ff_ui.head(f"Step 2 of 3 · {app.esc(name)} · filing for {start:%d/%m/%Y} to {end:%d/%m/%Y}", "Local AI suggestions", acts)
             + f"<div class=card>{head}{summary}{off}<p class=mut style=\"margin:12px 0 0\">The model reads last year's filed forms and the reports in the "
-              f"client folder. Standing facts are carried forward with the line they came from. Dates of last year's AGM, meetings and signing "
-              f"are shown for reference only and never filled in for this year. <a href=\"/agents?q=ai\">See what was sent and received</a></p></div>"
+              f"client folder. Standing facts are carried forward with the line they came from. For the AGM, meetings and signing, last year's dates are "
+              f"never used as they are: the same day this year is proposed for you to confirm against the minutes. <a href=\"/agents?q=ai\">See what was sent and received</a></p></div>"
             + f"<div class=card><form method=post action=/ff/answers><input type=hidden name=c value=\"{app.esc(name)}\">"
               f"<table><tr><th>Question</th><th>What the AI found, and the line it used</th><th>Answer to save</th></tr>{''.join(rows)}</table>"
               f"<p class=row style=\"margin:16px 0 0;align-items:center\"><button class=p data-busy=Saving>Save answers</button>"
