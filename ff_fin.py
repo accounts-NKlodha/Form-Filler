@@ -44,6 +44,8 @@ try:
 except Exception:  # noqa: BLE001
     pass
 DIV_KEY = "Rounding divisor (1 = Rs, 1000 = Rs '000, 100000 = Rs lakhs)"
+FV_KEY = "Face value per equity share (Rs)"
+FV_ASSUMED = "Assumed Rs 10 - not entered"
 BUILDS = {}  # client name -> {"state", "log"}
 LOCK = threading.Lock()
 
@@ -264,6 +266,10 @@ def build(folder, user="agent", log=None):
         cfg["fy"] = fy_of(folder)
         if f.get("cin") and not cfg["setup"].get("CIN"):
             cfg["setup"]["CIN"] = f["cin"]
+        if not cfg["setup"].get(FV_KEY):
+            # the share capital note divides by the face value: a blank one fills the note with #DIV/0!
+            cfg["setup"][FV_KEY] = 10
+            cfg.setdefault("setup_notes", {})[FV_KEY] = FV_ASSUMED
         save_cfg(folder, cfg)
         tmp_out = d / out_name(folder)
         pipeline.build_workbook(str(cfg_path(folder)), str(cy), str(py) if py.exists() else None, str(tmp_out), log=say)
@@ -380,6 +386,48 @@ def statements(folder):
     return app._cached("ffst", p, read)
 
 
+def drill(folder):
+    """Ledgers behind each line on the face of the balance sheet and P&L, for the drill-down on the review screen.
+
+    {(sheet, row): [{"ledger", "group", "cy", "py"}]} in rupees, signed as on the face of the statement."""
+    p = output(folder)
+    st = statements(folder)
+    if not p or not st:
+        return {}
+
+    def read():
+        L = ff_audit.Ledgers(p)
+        if not L.ok:
+            return None
+        sign = {h[1]: h[4] for h in HEAD.values()}
+        res = {}
+        for sheet in ("BS", "PL"):
+            parent = None
+            for r in st[sheet]:
+                if r["cy"] is None and r["py"] is None:
+                    continue
+                lab = re.sub(r"^\(?[a-zA-Z0-9]{1,4}\)\s*", "", r["label"]).strip()
+                line = L.line_of(lab)
+                code = None
+                if line:
+                    parent = line
+                elif parent:
+                    code = L.head_of(parent, lab)
+                    line = parent if code else None
+                if not line:
+                    continue
+                term = f"Notes:{L.line_label[line]}/{HEAD[code][3]}" if code else f"{sheet}:{L.line_label[line]}"
+                led = {}
+                for per in ("CY", "PY"):
+                    for x in L.for_term(term, per)[1]:
+                        d = led.setdefault(x["ledger"], {"ledger": x["ledger"], "group": x["group"], "cy": 0.0, "py": 0.0})
+                        d[per.lower()] += (x["amount"] or 0) * sign.get(line, 1)
+                if led:
+                    res[(sheet, r["row"])] = sorted(led.values(), key=lambda d: -abs(d["cy"] or d["py"]))
+        return res
+    return app._cached("ffdrill", p, read) or {}
+
+
 # ---------------------------------------------------------------- review points
 
 def inr(x):
@@ -411,8 +459,8 @@ def review_points(folder):
     try:
         bad = Schedule3(fs).checks()
         if bad:
-            for b in bad:
-                add("chk:" + re.sub(r"\W+", "-", b[:40]).lower(), b, "check")
+            for pid, text, detail, kind in explain_checks(fs):
+                add(pid, text, kind, detail)
         else:
             add("checks-ok", "Balance sheet tallies, profit agrees with Tally, all ledgers mapped", "auto", auto_ok=True)
     except FSError as e:
@@ -423,7 +471,7 @@ def review_points(folder):
             rows = mapping_rows(folder)
             pend = [r for r in rows if not r["approved"]]
             if pend:
-                add("map-pending", f"{len(pend)} ledgers mapped by the agent: confirm the heads", "mapping",
+                add("map-pending", f"{len(pend)} ledger{'s' if len(pend) != 1 else ''} mapped by the agent: confirm the head{'s' if len(pend) != 1 else ''}", "mapping",
                     ", ".join(r["ledger"] for r in pend[:8]) + (" ..." if len(pend) > 8 else ""))
             else:
                 add("map-ok", "Every ledger's Schedule III head is approved", "auto", auto_ok=True)
@@ -433,8 +481,13 @@ def review_points(folder):
         if cy and py:
             diffs = tally.roll_forward(py, cy)
             if diffs:
-                add("rollfwd", f"{len(diffs)} ledgers: last year's closing differs from this year's opening", "check",
-                    "; ".join(f"{d['ledger']} {inr(d['difference'])}" for d in diffs[:6]))
+                net = sum(d["difference"] for d in diffs)
+                why = ("The differences add up to nil, so the balances were most likely moved between ledgers "
+                       "(renamed or merged) when the new year's company was made. "
+                       if abs(net) < 1 else f"The differences add up to Rs {inr(net)}: an opening balance was changed. ")
+                add("rollfwd", f"{len(diffs)} ledgers open this year with a balance different from last year's closing", "check",
+                    why + "Ledger and difference: " + "; ".join(f"{d['ledger']} {inr(d['difference'])}" for d in diffs[:6])
+                    + (" ..." if len(diffs) > 6 else ""))
             else:
                 add("rollfwd-ok", "Opening balances match last year's closing", "auto", auto_ok=True)
     # 3. last year's figures against last year's filed AOC-4
@@ -468,6 +521,11 @@ def review_points(folder):
                         amt + str(r[3] or ""))
     except Exception:  # noqa: BLE001
         pass
+    # 4a. values the agent assumed
+    cfg = load_cfg(folder)
+    if (cfg.get("setup_notes") or {}).get(FV_KEY) == FV_ASSUMED:
+        add("fv-assumed", f"Face value per share taken as Rs {cfg['setup'].get(FV_KEY)}", "setup",
+            "It was not entered, and the share capital note needs it for the number of shares. Change it here if it is not Rs 10.")
     # 5. what only staff know (dates of meetings etc.)
     if app.inputs_path(folder).exists():
         open_q = app.steps(folder)["open_q"]
@@ -478,6 +536,91 @@ def review_points(folder):
     else:
         add("questions", "Prepare the questions for the forms (AGM, meetings, report dates)", "questions")
     return pts
+
+
+CHECK_TEXT = [  # (start of the label on the Checks sheet, id, sentence, what to do)
+    ("Balance Sheet tallies", "bs", "Balance sheet does not tally: assets and liabilities differ by {amt}",
+     "Usually a ledger with no Schedule III head, or a profit that does not agree with Tally. Clear those points first."),
+    ("Profit per Schedule III", "profit", "Profit in the P&L differs from the profit in Tally by {amt}",
+     "A P&L ledger is mapped to a balance sheet head, or the other way round. See Mapping."),
+    ("Ledgers not mapped", "unmapped", "{n} with no Schedule III head, so {its} balance is left out of the statements",
+     "{names}Pick a head on the Mapping tab."),
+    ("Suspense balances", "suspense", "Suspense has a balance of {amt}",
+     "Suspense should be nil before the accounts are signed: pass the entries in Tally and get the data again."),
+    ("Reserves: unexplained", "reserves", "Reserves moved by {amt} more than the year's profit explains",
+     "Look for a reserves ledger kept under share capital in Tally, a dividend, or an entry passed straight to reserves."),
+    ("PPE:", "ppe", "Fixed assets were reduced by {amt} more than the depreciation charged",
+     "There may be a sale or disposal: check the fixed asset note."),
+    ("Cash Flow:", "cashflow", "Cash flow statement is out by {amt} against cash and bank",
+     "This normally follows from the points above (reserves, unmapped ledgers). It clears when they are fixed."),
+    ("Previous-year TB", "nopy", "Last year's trial balance is not loaded, so last year's P&L is blank",
+     "Open last year's company in Tally and get the data again, or upload last year's trial balance."),
+    ("Roll-forward", "regroup", "Last year's balances are grouped differently in the two Tally companies",
+     "{lines}The last-year column follows this year's grouping. Check it against last year's signed accounts."),
+]
+
+
+def explain_checks(fs):
+    """The Checks sheet lines that do not read OK, in plain words: [(id, text, detail, kind)]."""
+    wb = openpyxl.load_workbook(fs, read_only=True, data_only=True)
+    ws = wb["Checks"]
+    rows = [list(r[:4]) + [None] * 4 for r in ws.iter_rows(min_row=4, values_only=True)]
+    num = lambda v: v if isinstance(v, (int, float)) else 0
+    out, i = [], 0
+    for i, r in enumerate(rows):
+        if not r[0] or not isinstance(r[3], str):
+            break
+        if r[3].strip() == "OK":
+            continue
+        label, cy, py = str(r[0]), num(r[1]), num(r[2])
+        hit = next((c for c in CHECK_TEXT if label.startswith(c[0])), None)
+        if not hit:
+            out.append(("chk:" + re.sub(r"\W+", "-", label[:40]).lower(), f"{label}: does not agree", "", "check"))
+            continue
+        _, pid, text, detail = hit
+        amt = f"Rs {inr(abs(cy))} this year" if abs(cy) >= 1 else ""
+        if abs(py) >= 1 and pid not in ("regroup", "nopy"):
+            amt += (" and " if amt else "") + f"Rs {inr(abs(py))} last year"
+        kind, names, lines, n = "check", "", "", ""
+        if pid == "unmapped":
+            led = []
+            for sh in ("TB_CY", "TB_PY"):
+                if sh in wb.sheetnames:
+                    led += [str(x[0]) for x in wb[sh].iter_rows(min_row=2, max_col=19, values_only=True)
+                            if x and x[0] and len(x) > 18 and x[18] == "MAP!" and str(x[0]) not in led]
+            n = f"{len(led)} ledger{'s' if len(led) != 1 else ''}" if led else "Some ledgers"
+            names = ("Ledger: " + ", ".join(led[:6]) + (" ..." if len(led) > 6 else "") + ". ") if led else ""
+            kind = "mapping"
+            detail = detail.replace("{its}", "its" if len(led) == 1 else "their")
+            text = text.replace("{its}", "its" if len(led) == 1 else "their")
+        if pid == "regroup":
+            diff = []
+            for x in rows[i:]:
+                if x[0] and isinstance(x[3], (int, float)) and abs(x[3]) >= 1 and not str(x[0]).startswith("Total"):
+                    diff.append(f"{x[0]}: Rs {inr(num(x[1]))} in last year's company, Rs {inr(num(x[2]))} in this year's opening")
+            lines = ("; ".join(diff[:6]) + ". ") if diff else ""
+        out.append(("chk:" + pid, text.format(amt=amt or "a small amount", n=n), detail.format(names=names, lines=lines), kind))
+    return out
+
+
+def set_setup(folder, key, value, user):
+    """A Setup value typed by staff on a review point (face value). The workbook is rebuilt by the caller."""
+    if not user.strip():
+        raise ValueError("Enter your name: the change is recorded against a person")
+    if key != FV_KEY:
+        raise ValueError("That value cannot be changed here")
+    try:
+        v = float(str(value).replace(",", "").strip())
+    except ValueError:
+        raise ValueError("Enter the face value as a number, for example 10")
+    if v <= 0:
+        raise ValueError("The face value must be more than zero")
+    cfg = load_cfg(folder)
+    cfg["setup"][key] = int(v) if v == int(v) else v
+    cfg.setdefault("setup_notes", {})[key] = f"Entered by {user.strip()} on {dt.date.today():%d-%b-%y}"
+    save_cfg(folder, cfg)
+    app.save(folder, verified=None)
+    ff_audit.event(folder, "review", f"Face value per share set to Rs {cfg['setup'][key]}", by=user.strip())
 
 
 def open_points(folder):
@@ -495,6 +638,12 @@ def clear_point(folder, pid, user, note=""):
         raise ValueError("This point clears itself once the work is done: " +
                          {"block": "fix the data and build again", "questions": "answer the questions",
                           "mapping": "approve the mapping"}[p["kind"]])
+    if p["kind"] == "setup":  # clearing confirms the assumed value
+        cfg = load_cfg(folder)
+        cfg.setdefault("setup_notes", {})[FV_KEY] = f"Rs {cfg['setup'].get(FV_KEY)} confirmed by {user.strip()} on {dt.date.today():%d-%b-%y}"
+        save_cfg(folder, cfg)
+        ff_audit.event(folder, "review", f"Face value per share confirmed as Rs {cfg['setup'].get(FV_KEY)}", by=user.strip())
+        return
     f = app.load(folder)
     c = f.get("cleared") or {}
     c[pid] = {"by": user.strip(), "at": dt.datetime.now().isoformat(timespec="seconds"), "note": note.strip()}

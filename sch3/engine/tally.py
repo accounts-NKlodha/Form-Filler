@@ -193,8 +193,10 @@ def read_tb(path):
     missing = [f for f in ("ledger_name", "group_name", "closing_balance") if f not in (rows[0] if rows else {})]
     if missing:
         raise ValueError("TB file needs columns: " + ", ".join(FIELDS))
+    from mapping import std_ledger
     for r in rows:
         r["primary_group"] = r.get("primary_group") or r["group_name"]
+        r["ledger_name"] = std_ledger(r["ledger_name"], r["primary_group"])
         for k in ("opening_balance", "net_debit", "net_credit", "closing_balance"):
             r[k] = amount(r.get(k))
     return rows

@@ -6,6 +6,8 @@
     ly_board       client folder, PDF                          local AI
     ly_auditor     client folder, PDF                          local AI
     ly_docx        financials/<FY>/last_year_docs/, Word       drafting this year's reports
+    dir_list       financials/<FY>/last_year_docs/Directors list.xlsx      drafting this year's reports
+    sh_list        financials/<FY>/last_year_docs/Shareholders list.xlsx   drafting this year's reports
     att_<element>  mca_attachments/<element>/                  the filing queue (MCA attachment)
     other          client folder, PDF                          local AI
 """
@@ -20,6 +22,11 @@ import filing_queue
 import lastyear
 
 MAX = 60 * 1024 * 1024
+# kind, file name the report drafting reads, title, why
+LISTS = [("dir_list", "Directors list.xlsx", "Directors list (Excel)",
+          "Names, DINs, designations and dates: goes into the Board's report and the annual return"),
+         ("sh_list", "Shareholders list.xlsx", "Shareholders list (Excel)",
+          "Names and shares held: goes into the annual return and the list of members")]
 
 
 def _safe(name):
@@ -61,6 +68,8 @@ def checklist(folder):
     add("ly_docx", "Last year's signed Word files: Board's report, Auditor's report, notice",
         "This year's reports are drafted from them", "useful",
         sorted(p for p in d.glob("*.doc*") if p.is_file()), multi=True, accept=".docx,.doc")
+    for kind, fname, title, why in LISTS:
+        add(kind, title, why, "useful", [d / fname if (d / fname).exists() else None], accept=".xlsx")
     known = {f for r in rows for f in r["files"]}
     add("other", "Other supporting documents (PDF)", "Anything else the local AI should read: minutes, registers, letters",
         "useful", [p for p in sorted(folder.glob("*.pdf")) if p not in known], multi=True)
@@ -100,6 +109,13 @@ def upload(folder, kind, filename, data, user=""):
         if kind == "other" and re.search(r"aoc[-_ ]?4|mgt[-_ ]?7", filename, re.I):
             raise ValueError("this looks like a filed form: use the last year's AOC-4 / MGT-7 row instead")
         dest = folder / filename
+        if dest.exists():
+            app._move_aside(folder, dest)
+        dest.write_bytes(data)
+    elif kind in ("dir_list", "sh_list"):
+        if ext != ".xlsx":
+            raise ValueError("expected an Excel file (.xlsx)")
+        dest = ff_fin.ly_docs_dir(folder) / next(x[1] for x in LISTS if x[0] == kind)
         if dest.exists():
             app._move_aside(folder, dest)
         dest.write_bytes(data)

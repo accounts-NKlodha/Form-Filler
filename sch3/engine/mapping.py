@@ -228,10 +228,24 @@ RULES = [
  (r"\btds\b|\btcs\b|advance tax|income tax refund", "OCA.GOVT", "OCL.STAT", "Balances with revenue authorities", ("current assets", "loans & advances (asset)")),
  (r"deferred tax asset", "DTA.NET", "DTL.NET", "Non-current: deferred tax asset (net)", ("current assets", "loans & advances (asset)")),
  (r"\bfd\b|fixed deposit|recurring deposit", "CCE.FD", "", "Other bank balances", ("deposits (asset)", "current assets", "investments")),
- (r"general reserve", "RS.GEN", "", "General reserve", ("reserves & surplus",)),
- (r"statutory reserve", "RS.STAT", "", "Statutory reserve (s.45-IC)", ("reserves & surplus",)),
- (r"securities premium|share premium", "RS.SEC", "", "Securities premium", ("reserves & surplus",)),
+ (r"general reserve", "RS.GEN", "", "General reserve", ("reserves & surplus", "capital account")),
+ (r"statutory reserve", "RS.STAT", "", "Statutory reserve (s.45-IC)", ("reserves & surplus", "capital account")),
+ (r"securities premium|share premium", "RS.SEC", "", "Securities premium", ("reserves & surplus", "capital account")),
+ (r"share app", "SAM.OTH", "", "Share application money, not share capital", ("capital account", "suspense a/c", "current liabilities")),
+ (r"reserve|surplus|profit (&|and) loss|retained earning|accumulated (profit|loss)", "RS.SURP", "", "Reserves kept under Capital Account in Tally; Schedule III shows them under Reserves and surplus", ("capital account",)),
 ]
+
+# Tally's own Profit & Loss A/c sits in the Primary group. Some companies renumber it ("300001 Profit & Loss A/c"),
+# so it is recognised by group and name and read under its standard name everywhere.
+PL_AC = "Profit & Loss A/c"
+_PL_AC_RX = re.compile(r"profit\s*(&|and)\s*loss\s*a\s*/?\s*c", re.I)
+
+
+def std_ledger(name, primary):
+    """The ledger name the engine works with: Tally's P&L account under its standard name, anything else unchanged."""
+    if (primary or "").strip().lower() in ("primary", "") and _PL_AC_RX.search(name or ""):
+        return PL_AC
+    return name
 
 
 def group_code(group, primary, groups):
