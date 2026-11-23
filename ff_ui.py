@@ -659,8 +659,23 @@ def _preview(folder):
         except Exception as e:  # noqa: BLE001
             out.append(f"<p class=mut>{FORM_LABEL.get(slug, slug)}: could not read the form values ({esc(str(e))}).</p>")
             continue
+        # Lines that are nil in every year they have (this year and last year) go to one short list at the end.
+        norm = lambda t: re.sub(r"\s+", " ", re.sub(r"\(?\b(current|previous) reporting period\)?|figures (as at the end of|for the period)|\(in rs\.?\)", "", t, flags=re.I)).strip(" /")
+        is_nil = lambda v: (isinstance(v, (int, float)) and v == 0) or bool(re.fullmatch(r"-?0+(\.0+)?", str(v).strip()))
+        groups = []
+        for r in rows:
+            k = (r.get("section") or "", norm(r["label"]))
+            if groups and groups[-1][0] == k:
+                groups[-1][1].append(r)
+            else:
+                groups.append((k, [r]))
+        once = lambda t: t.split(" / ")[0] if len(set(x.strip() for x in t.split(" / "))) == 1 else t  # "A / A" reads as "A"
+        nil = [(once(k[1] or g[0]["label"]), len(g)) for k, g in groups if all(is_nil(x["value"]) for x in g)]
+        nil_ids = {id(x) for k, g in groups if all(is_nil(x["value"]) for x in g) for x in g}
         cells, last = [], None
         for r in rows:
+            if id(r) in nil_ids:
+                continue
             sec = r.get("section") or ""
             if sec != last and sec not in ("", "(general)"):
                 cells.append(f"<div style=\"grid-column:1/-1;font-weight:600;margin-top:8px\">{esc(sec)}</div>")
@@ -678,9 +693,15 @@ def _preview(folder):
         for r in rows:
             by[r["category"]] = by.get(r["category"], 0) + 1
         mix = ", ".join(f"{c} {SRC_WORD.get(k, k).lower()}" for k, c in by.items())
+        nils = ""
+        if nil:
+            items = "".join(f"<li>{esc(lab[:110])}{' <span class=mut>(both years)</span>' if c > 1 else ''}</li>" for lab, c in nil)
+            nils = (f"<div style=\"margin-top:24px;font-weight:600\">Nil lines: {len(nil_ids)} fields filled with 0</div>"
+                    f"<p class=mut style=\"margin:4px 0 8px\">Zero in every year the form asks for. Read down the list once: anything that should carry an amount is a mapping point.</p>"
+                    f"<ul style=\"margin:0;padding-left:18px;columns:2;column-gap:24px\">{items}</ul>")
         out.append(f"<details {'open' if n == 0 else ''} style=\"margin-top:16px\"><summary style=\"cursor:pointer;font-weight:600\">"
                    f"{FORM_LABEL.get(slug, slug)}: {len(rows)} fields <span class=mut style=\"font-weight:400\">({mix})</span></summary>"
-                   f"<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px 24px;margin-top:16px\">{''.join(cells)}</div></details>")
+                   f"<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px 24px;margin-top:16px\">{''.join(cells)}</div>{nils}</details>")
     return "".join(out)
 
 
