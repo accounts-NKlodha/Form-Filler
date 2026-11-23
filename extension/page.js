@@ -591,7 +591,7 @@
     }
     return '';
   }
-  async function awaitSubmit(maxMs) {
+  async function awaitSubmit(maxMs, click) {
     const before = readSrn();
     const sub = [...document.querySelectorAll('button, [type="button"], [type="submit"]')]
       .find(b => isShown(b) && !b.disabled && /^submit$/i.test(strip(b.innerText || b.value || '')));
@@ -601,6 +601,12 @@
     sub.style.outlineOffset = '3px';
     sub.style.boxShadow = '0 0 0 8px rgba(255,77,79,.35)';
     abort = false;
+    if (click) {
+      // Only when the partner switched automatic Submit on for this queue run. Exact "Submit" text only; never DSC, Pay or Upload.
+      await sleep(1200);
+      if (abort) return { srn: '', msg: 'stopped' };
+      sub.click();
+    }
     for (let t = 0; t < maxMs && !abort; t += 1000) {
       await sleep(1000);
       const s = readSrn();
@@ -909,7 +915,7 @@
       else if (req.op === 'dump') res = dump();
       else if (req.op === 'fill') res = await fill(req.plan);
       else if (req.op === 'abort') { abort = true; res = { ok: true }; }
-      else if (req.op === 'awaitSubmit') res = await awaitSubmit(req.maxMs || 1800000);
+      else if (req.op === 'awaitSubmit') res = await awaitSubmit(req.maxMs || 1800000, !!req.click);
       else if (req.op === 'fillOne') {
         const g = gb(); const f = req.field;
         let cmp = null;

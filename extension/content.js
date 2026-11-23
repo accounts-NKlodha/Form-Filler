@@ -289,12 +289,25 @@
     }
     // Filing queue: last page saved. Staff click Submit; we wait for the SRN, then open the next client's form.
     if (plan.watchSubmit && res.save.lastPage && !count.failed && !stopLoop) {
-      status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br><b style="color:#ffd166">Check the form, then click the outlined Submit yourself.</b>` +
-        `<br>The tool waits for the SRN, then opens the next client. <small>(Alt+Shift+X stops)</small>`);
+      // Automatic Submit: only when switched on for this run, and only on a form that filled with no gap at all.
+      const gaps = (count.manual || 0) + (count.hidden || 0) + (res.save.cleared || 0);
+      let auto = !!plan.autoSubmit && !gaps;
+      if (auto) {
+        for (let n = 10; n > 0 && !stopLoop; n--) {
+          status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br>Automatic Submit is on: clicking Submit in ${n} s. <small>(Stop or Alt+Shift+X cancels)</small>`,
+            [['Stop', () => { stopLoop = true; }]]);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        if (stopLoop) auto = false;
+      }
+      status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br>` + (auto ? 'Submit clicked. Waiting for the SRN…'
+        : `<b style="color:#ffd166">Check the form, then click the outlined Submit yourself.</b>` +
+          (plan.autoSubmit && gaps ? `<br>Automatic Submit held back: ${gaps} field${gaps > 1 ? 's were' : ' was'} left for staff.` : '') +
+          `<br>The tool waits for the SRN, then opens the next client.`) + ` <small>(Alt+Shift+X stops)</small>`);
       busy = true;
-      const w = await page('awaitSubmit', {});
+      const w = await page('awaitSubmit', { click: auto });
       busy = false;
-      if (w && w.srn) { await queueNext(plan, 'submitted', w.srn, count, ''); return; }
+      if (w && w.srn) { await queueNext(plan, 'submitted', w.srn, count, auto ? 'Submit clicked by Form Filler (automatic Submit on)' : ''); return; }
       status(`No SRN seen for <b>${esc(plan.client)}</b> (${esc(w && w.msg)}).<br>If you submitted, note the SRN in the app's queue.`,
         [['Next client', () => queueNext(plan, 'saved', '', count, 'SRN not read'), true], ['Wait again', () => runFill(plan, true)], ['Close', close]]);
       return;

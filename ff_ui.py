@@ -685,7 +685,10 @@ def page_file(form="all", msg=""):
                    for k, t in (("all", "All"), ("aoc4", "AOC-4"), ("mgt7a", "MGT-7A")))
     filt += f"<a href=/adt1>{tag('ADT-1 (own list)')}</a><span class=mut>MGT-7 once its form is captured</span>"
     acts = (f"<form method=post action=/ff/queue/pause><button {'disabled' if not running else ''}>Pause</button></form>"
-            f"<form method=post action=/ff/queue/start><button class=p data-busy=Starting>Start filing for all</button></form>")
+            f"<form method=post action=/ff/queue/start class=row style=\"gap:10px;align-items:center\">"
+            f"<label style=\"display:flex;gap:6px;align-items:center\"><input type=checkbox name=auto value=1 {'checked' if Q.get('auto_submit') else ''}>"
+            f"Click Submit by itself when a form is complete</label>"
+            f"<button class=p data-busy=Starting>Start filing for all</button></form>")
     who = """<div class=steps><div><b>Staff</b><span class=mut>Log in and enter the captcha, once a session</span></div>
 <div class=d><b>Form Filler</b><span class=mut>Opens the form, fills each section, attaches the PDFs, saves the draft</span></div>
 <div><b>Staff</b><span class=mut>Review, attach DSC, submit, pay</span></div>
@@ -1071,6 +1074,7 @@ def handle_post(path, query, body, form):
         if path == "/ff/queue/start":
             pairs = [(d.name, s) for d in clients() if ff_fin.verified(d) for s in app.load(d).get("forms") or [] if s in app.SMART]
             added, refused = filing_queue.add(pairs)
+            filing_queue.set_auto(form.get("auto") == "1")
             job = filing_queue.start()
             inq = [j for j in filing_queue.load()["jobs"] if j["status"] in ("queued", "filling", "held")]
             if added:
@@ -1081,6 +1085,9 @@ def handle_post(path, query, body, form):
             else:
                 m = "No ticked forms to add. "
             m += ("Log in on MCA, open the side panel and click Start the queue." if job else "" if inq else "Tick clients on Review financials first.")
+            if job:
+                m += (" Automatic Submit is ON: the tool clicks Submit on a form that filled without a gap. DSC and payment stay with staff."
+                      if form.get("auto") == "1" else " Automatic Submit is off: you click Submit on each form.")
             for c, s, why in refused:
                 m += f"\nNot added, {c} {FORM_LABEL.get(s, s)}: {'; '.join(why)}"
             return _back("/file", m)

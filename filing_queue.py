@@ -38,6 +38,7 @@ def load():
     q.setdefault("running", False)
     q.setdefault("current", None)
     q.setdefault("submit", True)
+    q.setdefault("auto_submit", False)  # the partner's switch: the tool clicks Submit itself on a clean, verified form
     q.setdefault("next_id", 1)
     return q
 
@@ -173,6 +174,12 @@ def start():
     return dict(j, url=form_url(j["slug"]))
 
 
+def set_auto(on):
+    q = load()
+    q["auto_submit"] = bool(on)
+    save(q)
+
+
 def pause():
     q = load()
     q["running"] = False
@@ -190,7 +197,8 @@ def advance(body):
         j["note"] = str(body.get("note") or "")[:300]
         j["counts"] = body.get("counts") or {}
         j["updated"] = datetime.now().isoformat(timespec="seconds")
-        _audit(j, {"submitted": f"Submitted on MCA, SRN {j['srn'] or 'not read'}", "saved": "Draft saved on MCA, not submitted",
+        tool = "automatic Submit" in j["note"]
+        _audit(j, {"submitted": f"Submitted on MCA{' (Submit clicked by Form Filler, automatic Submit switched on by staff)' if tool else ''}, SRN {j['srn'] or 'not read'}", "saved": "Draft saved on MCA, not submitted",
                    "held": f"Filing stopped: {j['note'] or 'needs attention'}", "skipped": "Skipped"}.get(j["status"], j["status"]))
     q["current"] = None
     nxt = next((x for x in q["jobs"] if x["status"] == "queued"), None) if q["running"] else None
@@ -286,7 +294,7 @@ def plan(slug):
             first.append(e)
     p["fields"] = first + p["fields"]
     p.update(autoSave=True, autoNext=True, autoAdvance=True, autoContinue=True, watchSubmit=True,
-             advancePath="/queue/advance", queueJob=j["id"], nextUrl=form_url(slug))
+             advancePath="/queue/advance", queueJob=j["id"], nextUrl=form_url(slug), autoSubmit=bool(q.get("auto_submit")))
     files = attachment_files(folder, slug)
     by_name = {f.get("name"): f for f in m.schema(slug)["fields"] if f["type"] == "file"}
     p["attachments"] = []
