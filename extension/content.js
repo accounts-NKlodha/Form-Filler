@@ -280,7 +280,7 @@
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
     if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 40 && idleNow < 2 && !stopLoop) {
       status(`Round ${round + 1}: filled <b>${count.filled || 0}</b>. ${esc(res.save.msg)}. Continuing… <small>(Alt+Shift+X stops)</small>`);
-      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow, leftNow); else status('Stopped.', [['Close', close]]); }, 2500);
+      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow, leftNow); else status('Stopped.', [['Close', close]]); }, 4000 + Math.random() * 2000);  // unhurried: the portal blocks rapid saves
       return;
     }
     // Filing queue: last page saved. Staff click Submit; we wait for the SRN, then open the next client's form.

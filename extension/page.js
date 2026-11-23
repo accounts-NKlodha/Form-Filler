@@ -543,6 +543,7 @@
   // Fields the tool typed in this tab (key -> times). A value the portal empties again after Save is typed
   // once more and then left alone, so a run can never go round the same section for ever.
   const given = {};
+  let lastLocked = -1;
 
   // After a Save: empty, editable fields that show the portal's own "Please enter ..." message.
   function saveErrors(skip) {
@@ -844,6 +845,10 @@
           if (cleared) { save.cleared = cleared; save.msg = `Saved (${cleared} previous-year fields the portal emptied again were left blank)`; }
           // Read-only fields the portal fills itself don't hold the page back: only fields below an unclicked Save do.
           save.more = log.some(e => e.status === 'next-section');
+          // Fields still locked below the Save just pressed: the portal opens them once that Save is in.
+          // Look again in the next round; if the same number is still locked then, the page needs staff.
+          if (locked && locked !== lastLocked) save.more = true;
+          lastLocked = locked;
           // A field hidden by an earlier answer may open once that answer is saved: give it one more round.
           const seen = (window.__mcaHiddenSeen = window.__mcaHiddenSeen || new Set());
           const fresh = log.filter(e => e.status === 'hidden' && !seen.has(e.key + '|' + e.label));
