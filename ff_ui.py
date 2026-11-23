@@ -689,16 +689,21 @@ def page_file(form="all", msg=""):
             f"<label style=\"display:flex;gap:6px;align-items:center\"><input type=checkbox name=auto value=1 {'checked' if Q.get('auto_submit') else ''}>"
             f"Click Submit by itself when a form is complete</label>"
             f"<button class=p data-busy=Starting>Start filing for all</button></form>")
+    auto = bool(Q.get("auto_submit"))
     who = """<div class=steps><div><b>Staff</b><span class=mut>Log in and enter the captcha, once a session</span></div>
 <div class=d><b>Form Filler</b><span class=mut>Opens the form, fills each section, attaches the PDFs, saves the draft</span></div>
-<div><b>Staff</b><span class=mut>Review, attach DSC, submit, pay</span></div>
-<div class=d><b>Form Filler</b><span class=mut>Reads the SRN, records it, opens the next client</span></div></div>"""
+<div><b>Staff</b><span class=mut>SUBMITLINE</span></div>
+<div class=d><b>Form Filler</b><span class=mut>SRNLINE</span></div></div>"""
+    who = who.replace("SUBMITLINE", "Attach DSC, check and pay" if auto else "Review, click Submit, attach DSC, pay").replace(
+        "SRNLINE", "Clicks Submit on a form with no gap, reads the SRN, opens the next client" if auto else "Reads the SRN, records it, opens the next client")
     cur = next((j for j in jobs if j["id"] == Q.get("current")), None)
     side = (f"<div class=h>Chrome side panel on mca.gov.in</div>"
             + (f"<p><b>{esc(cur['client'])}</b><br>{FORM_LABEL.get(cur['slug'], cur['slug'])}, filling now</p>" if cur else "<p class=mut>Nothing filling now.</p>")
-            + "<ol style=\"padding-left:18px;margin:0\"><li>Open MCA in the Chrome window started by <code>open_mca_chrome.ps1</code>.</li>"
-              "<li>Log in and enter the captcha.</li><li>Click the MCA filler icon, then <b>Start the queue</b> in the side panel.</li>"
-              "<li>On the last page click Submit yourself. The SRN is read and the next client opens.</li></ol>"
+            + "<ol style=\"padding-left:18px;margin:0\"><li>Open MCA in your own Chrome.</li>"
+              "<li>Log in and enter the captcha.</li><li>Click the Form Filler icon, then <b>Start the queue</b> in the side panel.</li>"
+              + ("<li>The tool clicks Submit after a 10 second countdown (Stop cancels it). The SRN is read and the next client opens.</li></ol>" if auto else
+                 "<li>On the last page click Submit yourself. The SRN is read and the next client opens.</li></ol>") +
+              "
               "<p class=mut>It works inside your own Chrome, because MCA blocks automated browsers. Alt+Shift+X stops it.</p>")
     body = (head(f"Step 3 of 3 · {fy_label()}", "File on MCA", acts)
             + f"<div class=filters><span class=mut>Form</span>{filt}</div>"
