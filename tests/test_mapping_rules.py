@@ -35,3 +35,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def test_coded_names_and_fdr():
+    assert suggest("451120 INCOME TAX", "Indirect Expenses", "Indirect Expenses")[0] == "TAX.CUR"
+    assert suggest("FDR NO 100200300400 - X01", "Investments", "Investments")[0] == "CCE.FD"
+    assert suggest("452002 AUDIT FEES", "Indirect Expenses", "Indirect Expenses")[0] == "OEXP.AUD"
+    assert suggest("330002 - INT FROM BANK FDR - ABC", "Indirect Incomes", "Indirect Incomes")[0] == "OI.INT"
+
+
+test_coded_names_and_fdr()
+print("coded names: ok")

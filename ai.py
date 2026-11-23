@@ -400,6 +400,32 @@ with the line it relied on, and flags where it differs from the current answer.<
     return app.shell("Local AI", body, msg)
 
 
+def _dates(text):
+    """A list of dates, one per line when there are several."""
+    parts = [x.strip() for x in str(text or "").split(",") if x.strip()]
+    return _app().esc(text) if len(parts) < 3 else "<br>".join(_app().esc(x) for x in parts)
+
+
+def _source(src, answer):
+    """The line the model relied on, folded away: the document's name shows, the words open on a click."""
+    src = str(src or "").strip()
+    if not src:
+        return ""
+    m = re.match(r"^\[(.+?)\]\s*(.*)$", src, re.S)
+    fname, quote_ = (m.group(1), m.group(2)) if m else ("", src)
+    up = fname.upper()
+    doc = ("last year's AOC-4" if "AOC" in up else "last year's MGT-7A" if "MGT" in up else "the board's report" if "BOARD" in up
+           else "the auditor's report" if "AUDIT" in up else fname or "the documents")
+    quote_ = " ".join(quote_.split())
+    if len(quote_) > 180:  # keep the part around the answer
+        at = quote_.lower().find(str(answer).lower()) if len(str(answer)) > 3 else -1
+        a0 = max(0, (at if at >= 0 else 0) - 90)
+        quote_ = ("... " if a0 else "") + quote_[a0:a0 + 180].strip() + " ..."
+    esc = _app().esc
+    return (f"<details class=src><summary>From {esc(doc)}</summary><div>&ldquo;{esc(quote_)}&rdquo;"
+            + (f"<br>File: {esc(fname)}" if fname else "") + "</div></details>")
+
+
 def page_questions(name, msg=""):
     app = _app()
     import ff_ui
@@ -425,58 +451,67 @@ def page_questions(name, msg=""):
     else:
         head = "<div class=h>Not run yet for this client</div>"
     agree = differ = new = stale = 0
-    rows = []
+    groups = {"confirm": [], "type": [], "differ": [], "ok": []}
     for key, text, how, cur, came in qs:
         a = dict(ans.get(key) or {})
         if a.get("answer") and stale_dates(folder, text, how, a["answer"]):  # a run made before this check
             a.update(last_year=a["answer"], answer="", confidence="none")
         cur_stale = stale_dates(folder, text, how, cur)
+        g = "ok"
         if not a:
             verdict, ai_cell = "", "<span class=mut>Not asked yet</span>"
+            g = "ok" if cur.strip() else "type"
         elif a.get("last_year"):
             stale += 1
             prop, warn = propose(folder, text, how, a["last_year"])
+            g = "confirm"
             if prop:
                 a["answer"] = prop
-                verdict = ff_ui.tag("Proposed from last year: confirm", "sug")
-                ai_cell = (f"<b>{app.esc(prop)}</b> <span class=mut>(proposed for this year)</span>"
-                           f"<div class=mut style=\"margin-top:4px\">Last year's filing shows {app.esc(a['last_year'])}; the same "
-                           f"day this year is proposed. Check it against the minutes before saving."
-                           f"{' Note: ' + app.esc(warn) + '.' if warn else ''}</div>")
+                verdict = ff_ui.tag("Proposed: confirm", "sug")
+                ai_cell = (f"<b>{_dates(prop)}</b><div class=mut>Last year: {app.esc(a['last_year'])}</div>"
+                           + (f"<div class=mut>{app.esc(warn)}</div>" if warn else ""))
             else:
                 verdict = ff_ui.tag("Enter this year's date", "need")
-                ai_cell = (f"<span class=mut>Last year's filing shows</span> <b>{app.esc(a['last_year'])}</b>"
-                           f"<div class=mut>Not used: this filing needs {need_text(folder, text, how)}.</div>")
+                ai_cell = f"<span class=mut>Last year: {_dates(a['last_year'])}. Needs {need_text(folder, text, how)}.</span>"
         elif not a.get("answer") or a.get("confidence") == "none":
-            verdict, ai_cell = ff_ui.tag("Not in the documents"), "<span class=mut>No answer found</span>"
+            if cur.strip():
+                verdict, ai_cell = ff_ui.tag("Saved answer kept"), "<span class=mut>Not in the documents</span>"
+            else:
+                verdict, ai_cell, g = ff_ui.tag("Type the answer", "need"), "<span class=mut>Not in the documents</span>", "type"
         else:
             if not cur.strip():
                 verdict, new = ff_ui.tag("AI filled a blank", "sug"), new + 1
             elif _norm(cur) == _norm(a["answer"]):
                 verdict, agree = ff_ui.tag("Agrees", "good"), agree + 1
             else:
-                verdict, differ = ff_ui.tag("Differs: check", "need"), differ + 1
-            ai_cell = (f"<b>{app.esc(a['answer'])}</b> <span class=mut>({app.esc(a.get('confidence', ''))} confidence)</span>"
-                       f"<div class=mut style=\"margin-top:4px\">&ldquo;{app.esc(a.get('source', ''))}&rdquo;</div>")
+                verdict, differ, g = ff_ui.tag("Differs: check", "need"), differ + 1, "differ"
+            conf = a.get("confidence", "")
+            ai_cell = (f"<b>{app.esc(a['answer'])}</b>" + (f" <span class=mut>· {app.esc(conf)} confidence</span>" if conf and conf != "high" else "")
+                       + _source(a.get("source", ""), a["answer"]))
         if cur_stale:
-            verdict = ff_ui.tag("Saved answer is last year's date", "badt")
+            verdict, g = ff_ui.tag("Saved answer is last year's date", "badt"), "confirm"
         value = cur if cur.strip() else a.get("answer", "")
         field = f"<input type=text name=\"q_{app.esc(key)}\" value=\"{app.esc(value)}\" style=\"width:100%\" aria-label=\"Answer to save\">"
-        rows.append(f"<tr><td style=\"width:30%\">{app.esc(text)}<div class=mut>{app.esc(how)}</div></td>"
-                    f"<td style=\"width:36%\">{ai_cell}</td><td>{field}<div style=\"margin-top:6px\">{verdict}</div></td></tr>")
-    summary = (f"<p style=\"margin:0\">{agree} agree with the saved answer · {differ} differ · {new} blanks filled · "
-               f"{stale} dates proposed from last year's, to confirm</p>") if ans else ""
+        groups[g].append(f"<tr><td style=\"width:34%\">{app.esc(text)}<div class=mut>{app.esc(how)}</div></td>"
+                         f"<td style=\"width:30%\">{ai_cell}</td><td>{field}<div style=\"margin-top:6px\">{verdict}</div></td></tr>")
+    titles = [("confirm", "Dates to confirm", "Proposed as the same day this year. Check each against the minutes."),
+              ("type", "Type these yourself", "The documents do not say."),
+              ("differ", "AI differs from the saved answer", "Open the source to see which is right."),
+              ("ok", "No action needed", "The AI agrees, filled a blank from the documents, or the saved answer stands.")]
+    rows = [f"<tr class=grp><td colspan=3><b>{t}</b> <span class=mut>({len(groups[k])}) · {h}</span></td></tr>" + "".join(groups[k])
+            for k, t, h in titles if groups[k]]
+    summary = (f"<p style=\"margin:0\">{len(groups['confirm'])} dates to confirm · {len(groups['type'])} to type · "
+               f"{len(groups['differ'])} differ · {len(groups['ok'])} need no action</p>") if ans else ""
     q = quote(name)
     acts = (f"<a class=btn href=\"/review?c={q}&tab=questions\">Back to the inputs</a>"
             f"<form method=post action=/ai/run><input type=hidden name=c value=\"{app.esc(name)}\">"
             f"<button {'disabled' if running or not s['enabled'] else ''}>{'Run again' if res else 'Read the documents'}</button></form>")
     off = "" if s["enabled"] else "<p class=err>Local AI is off. Turn it on under Local AI settings.</p>"
     body = (ff_ui.head(f"Step 2 of 3 · {app.esc(name)} · filing for {start:%d/%m/%Y} to {end:%d/%m/%Y}", "Local AI suggestions", acts)
-            + f"<div class=card>{head}{summary}{off}<p class=mut style=\"margin:12px 0 0\">The model reads last year's filed forms and the reports in the "
-              f"client folder. Standing facts are carried forward with the line they came from. For the AGM, meetings and signing, last year's dates are "
-              f"never used as they are: the same day this year is proposed for you to confirm against the minutes. <a href=\"/agents?q=ai\">See what was sent and received</a></p></div>"
+            + f"<div class=card>{head}{summary}{off}<p class=mut style=\"margin:12px 0 0\">Read from last year's filed forms on the office network. "
+              f"Nothing is saved until you click Save answers. <a href=\"/agents?q=ai\">See what was sent and received</a></p></div>"
             + f"<div class=card><form method=post action=/ff/answers><input type=hidden name=c value=\"{app.esc(name)}\">"
-              f"<table><tr><th>Question</th><th>What the AI found, and the line it used</th><th>Answer to save</th></tr>{''.join(rows)}</table>"
+              f"<style>tr.grp td{{background:var(--muted);padding-top:10px;padding-bottom:10px}}details.src{{margin-top:4px}}details.src div{{font-size:13px;color:var(--mfg);margin-top:4px;max-width:44ch}}</style><table><tr><th>Question</th><th>AI suggestion</th><th>Answer to save</th></tr>{''.join(rows)}</table>"
               f"<p class=row style=\"margin:16px 0 0;align-items:center\"><button class=p data-busy=Saving>Save answers</button>"
               f"<span class=mut>Blanks take the AI's answer. Nothing else changes unless you edit it.</span></p></form></div>")
     return ff_ui.shell(f"Local AI: {name}", body, "/review", msg, refresh=3 if running else 0)

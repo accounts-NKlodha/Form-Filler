@@ -448,6 +448,8 @@ def review_points(folder):
 
     def add(pid, text, kind, detail="", auto_ok=None):
         c = cleared.get(pid)
+        if c and (c.get("text") and c["text"] != text or pid in FIGURE_CHECKS and not c.get("note")):
+            c = None  # the figures behind the point changed after it was cleared: it is open again
         pts.append({"id": pid, "text": text, "kind": kind, "detail": detail,
                     "cleared": c, "passed": auto_ok is True})
 
@@ -549,6 +551,18 @@ def review_points(folder):
     else:
         add("questions", "Prepare the questions for the forms (AGM, meetings, report dates)", "questions")
     return pts
+
+
+# Checks that say the figures themselves do not agree. They are fixed, not noted: clearing one needs a written reason.
+FIGURE_CHECKS = {"chk:bs", "chk:profit", "chk:suspense", "chk:reserves", "chk:ppe", "chk:cashflow", "chk:nopy"}
+
+
+def building(folder):
+    """True while a get-data or build job for this client is waiting or running: the figures are about to change."""
+    import ff_jobs
+    name = Path(folder).name
+    return any(j["client"] == name and j["kind"] in ("get_data", "build") and j["status"] in ("queued", "working")
+               for j in ff_jobs.load()["jobs"])
 
 
 CHECK_TEXT = [  # (start of the label on the Checks sheet, id, sentence, what to do)
@@ -659,7 +673,9 @@ def clear_point(folder, pid, user, note=""):
         return
     f = app.load(folder)
     c = f.get("cleared") or {}
-    c[pid] = {"by": user.strip(), "at": dt.datetime.now().isoformat(timespec="seconds"), "note": note.strip()}
+    if pid in FIGURE_CHECKS and not note.strip():
+        raise ValueError("Write the reason: this point says the figures do not agree, so it cannot be cleared without one")
+    c[pid] = {"by": user.strip(), "at": dt.datetime.now().isoformat(timespec="seconds"), "note": note.strip(), "text": p["text"]}
     app.save(folder, cleared=c)
     ff_audit.event(folder, "review", f"Review point cleared: {p['text']}" + (f" ({note.strip()})" if note.strip() else ""),
                    point=pid, by=user.strip())
@@ -669,6 +685,8 @@ def verify(folder, user):
     """The tick: financials verified, okay to file. Refused while any point is open."""
     if not user.strip():
         raise ValueError("Enter your name: the tick is recorded against a person")
+    if building(folder):
+        raise ValueError("The financials are being rebuilt: wait for the new figures, then review and tick")
     left = open_points(folder)
     if left:
         raise ValueError(f"{len(left)} review points are still open: " + "; ".join(p["text"] for p in left[:4]))
@@ -685,7 +703,16 @@ def unverify(folder, user):
 
 
 def verified(folder):
-    return app.load(folder).get("verified")
+    """The tick, or None. A tick does not stand while a review point is open or the figures are being rebuilt."""
+    v = app.load(folder).get("verified")
+    if not v:
+        return None
+    try:
+        if building(folder) or open_points(folder):
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    return v
 
 
 # ---------------------------------------------------------------- reports and meeting papers

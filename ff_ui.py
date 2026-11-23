@@ -132,6 +132,9 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mf
 .chain b{display:block}.ledgers{margin:6px 0 0;padding:0;list-style:none;font-size:13px}.ledgers li{display:flex;justify-content:space-between;gap:12px;border-top:1px dashed var(--border);padding:3px 0}
 .pt{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding:10px 0}.pt:first-of-type{border-top:0}
 .pt.done{flex-direction:row;justify-content:space-between;align-items:flex-start;gap:12px}
+.ptsec{margin-top:16px}.ptsec:first-of-type{margin-top:4px}.ptt{font-weight:600;font-size:14px}.ptsec>summary{font-weight:600;font-size:14px;color:var(--fg)}
+.pth{display:flex;gap:8px;align-items:flex-start}.ptn{flex:none;width:22px;height:22px;border-radius:11px;border:1px solid var(--strong);font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.wait{background:var(--muted);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--mfg)}a.btn.sm{display:inline-flex;align-items:center;text-decoration:none}
 table.fixed{table-layout:fixed}table.fixed td{overflow-wrap:anywhere}
 .log{display:grid;grid-template-columns:64px 1fr;gap:12px;border-top:1px solid var(--border);padding:8px 0;font-size:13px}.log:first-of-type{border-top:0}
 details>summary{cursor:pointer;color:var(--primary);font-size:13px}
@@ -363,43 +366,73 @@ def page_review(name="", tab="", msg=""):
                 f"<button class=sm>Remove tick</button></form>")
     else:
         tick = (f"<form method=post action=/ff/verify data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
-                f"<button class=p {'disabled' if open_n or not fs else ''} title=\"{'Clear every review point first' if open_n else ''}\">Verified, okay to file</button></form>")
+                f"<button class=p {'disabled' if open_n or not fs or ff_fin.building(folder) else ''} title=\"{'Clear every review point first' if open_n else ''}\">Verified, okay to file</button></form>")
     acts = pick + (f"<a class=btn href=\"/ff/workbook?c={q}\">Open in Excel</a>" if fs else "") + tick
     nmiss = len(ff_docs.missing(folder))
     tlabel = lambda k, t: f"{t} ({nmiss} missing)" if k == "docs" and nmiss else t
     tabs = "<nav class=tabs>" + "".join(f"<a href=\"/review?c={q}&tab={k}\" class=\"{'on' if k == tab else ''}\">{tlabel(k, t)}</a>" for k, t in TABS) + "</nav>"
     left = _review_tab(folder, tab)
-    pts_html = []
+    # Review points in the order they should be worked: what changes the figures first, then what is read and confirmed.
+    busy = ff_fin.building(folder)
+    map_open = any(p["kind"] == "mapping" and not p["passed"] for p in pts)
+    fix, read, done_ = [], [], []
     for p in pts:
-        if p["passed"]:
-            right = tag("Passed", "good")
-        elif p["cleared"]:
-            right = tag(f"Cleared by {p['cleared']['by']}", "good")
-        elif p["kind"] == "questions":
-            right = f"<a href=\"/review?c={q}&tab=questions\">{tag('Answer', 'need')}</a>"
-        elif p["kind"] == "mapping":
-            right = f"<a href=\"/review?c={q}&tab=mapping\">{tag('Pick a head' if p['id'].startswith('chk:') else 'Confirm', 'need')}</a>"
-        elif p["kind"] == "setup":
-            right = (f"<div class=row style=\"gap:6px\"><form method=post action=/ff/setup data-who=need class=row style=\"gap:6px\">"
-                     f"<input type=hidden name=c value=\"{esc(name)}\"><input type=text name=value placeholder=\"Face value, Rs\" style=\"width:130px;height:32px\" aria-label=\"Face value per share\">"
-                     f"<button class=sm>Change and rebuild</button></form>"
-                     f"<form method=post action=/ff/point/clear data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
-                     f"<input type=hidden name=id value=\"{esc(p['id'])}\"><button class=sm>Rs 10 is right</button></form></div>")
-        elif p["kind"] == "block":
-            right = f"<a href=\"/data\">{tag('Get data', 'need')}</a>"
-        else:
-            right = (f"<form method=post action=/ff/point/clear data-who=need class=row style=\"gap:6px\"><input type=hidden name=c value=\"{esc(name)}\">"
-                     f"<input type=hidden name=id value=\"{esc(p['id'])}\"><input type=text name=note placeholder=\"Note on how it was cleared (optional)\" style=\"flex:1;height:32px\" aria-label=Note>"
-                     f"<button class=sm>Clear</button></form>")
         det = f"<div class=mut>{esc(p['detail'])}</div>" if p["detail"] else ""
-        cn = f"<div class=mut>Note: {esc(p['cleared']['note'])}</div>" if p["cleared"] and p["cleared"].get("note") else ""
-        done = p["passed"] or p["cleared"] or p["kind"] in ("questions", "mapping", "block")
-        pts_html.append(f"<div class=\"pt{' done' if done else ''}\"><div>{esc(p['text'])}{det}{cn}</div><div>{right}</div></div>")
+        if p["passed"] or p["cleared"]:
+            who = f"Cleared by {esc(p['cleared']['by'])}" + (f": {esc(p['cleared']['note'])}" if p["cleared"].get("note") else "") if p["cleared"] else "Passed"
+            done_.append(f"<div class=\"pt done\"><div>{esc(p['text'])}<div class=mut>{who}</div></div><div>{tag('Cleared' if p['cleared'] else 'Passed', 'good')}</div></div>")
+            continue
+        figure = p["id"] in ff_fin.FIGURE_CHECKS
+        clear = lambda label, ph, req: (
+            f"<form method=post action=\"/ff/point/clear?tab={tab}\" data-who=need class=row style=\"gap:6px\"><input type=hidden name=c value=\"{esc(name)}\">"
+            f"<input type=hidden name=id value=\"{esc(p['id'])}\"><input type=text name=note placeholder=\"{ph}\" {'required' if req else ''} "
+            f"style=\"flex:1;height:32px\" aria-label=\"{ph}\"><button class=sm>{label}</button></form>")
+        if p["kind"] == "questions":
+            act, where = f"<a class=\"btn sm\" href=\"/review?c={q}&tab=questions\">Open inputs for the forms</a>", fix
+        elif p["kind"] == "mapping":
+            act, where = (f"<a class=\"btn sm\" href=\"/review?c={q}&tab=mapping\">Open mapping and "
+                          f"{'pick a head' if p['id'].startswith('chk:') else 'confirm'}</a>"), fix
+        elif p["kind"] == "setup":
+            act = (f"<div class=row style=\"gap:6px;flex-wrap:wrap\"><form method=post action=\"/ff/setup?tab={tab}\" data-who=need class=row style=\"gap:6px\">"
+                   f"<input type=hidden name=c value=\"{esc(name)}\"><input type=text name=value placeholder=\"Face value, Rs\" style=\"width:130px;height:32px\" aria-label=\"Face value per share\">"
+                   f"<button class=sm>Change and rebuild</button></form>"
+                   f"<form method=post action=\"/ff/point/clear?tab={tab}\" data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
+                   f"<input type=hidden name=id value=\"{esc(p['id'])}\"><button class=sm>Rs 10 is right</button></form></div>")
+            where = fix
+        elif p["kind"] == "block":
+            act, where = "<a class=\"btn sm\" href=\"/data\">Go to Get data</a>", fix
+        elif figure and map_open and p["id"] in ("chk:reserves", "chk:cashflow", "chk:bs", "chk:profit"):
+            act = "<div class=wait>Nothing to do here yet. This should go away by itself once the mapping point is confirmed and the figures are rebuilt.</div>"
+            where = fix
+        elif figure:
+            act, where = clear("Clear with reason", "Reason it is right as it stands (required)", True), fix
+        else:
+            act, where = clear("Clear", "Note on what you checked (optional)", False), read
+        where.append((p, det, act))
+    # the cause before its effects: mapping and missing data first, then the checks that follow from them
+    rank = lambda x: (0 if x[0]["kind"] in ("block", "mapping") else 1 if x[0]["kind"] == "setup" else 3 if x[0]["kind"] == "questions" else 2)
+    fix.sort(key=rank)
+
+    def _sec(title, hint, items, start):
+        if not items:
+            return ""
+        rows_ = "".join(f"<div class=pt><div class=pth><span class=ptn>{start + k}</span><b>{esc(p['text'])}</b></div>{det}<div>{act}</div></div>"
+                        for k, (p, det, act) in enumerate(items))
+        return f"<div class=ptsec><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
+    pts_html = [
+        ("<div class=wait style=\"margin-bottom:12px\"><b>The figures are being rebuilt.</b> These points will refresh when it finishes; the tick is off until then.</div>" if busy else ""),
+        _sec("Fix first", "These change the figures or the forms. Work from the top: a later point often clears itself once an earlier one is fixed.", fix, 1),
+        _sec("Read and confirm", "The figures agree, but the agent wants a person to look. Check, then clear.", read, len(fix) + 1),
+        (f"<details class=ptsec><summary>Done ({len(done_)})</summary>{''.join(done_)}</details>" if done_ else ""),
+    ]
+    if not fix and not read:
+        pts_html.insert(0, "<p><b>Nothing left to review.</b> You can tick \"Verified, okay to file\".</p>")
+    n_fix, n_read = len(fix), len(read)
     fyl = fy_label(folder)
     body = (head(f"Step 2 of 3 · {esc(name)} · {fyl} · client {i + 1} of {len(names)}", "Review financials", acts)
             + _flow(folder, q, pts, v) + tabs
             + f"""<div class="g12 fit"><div class="card s7">{left}</div>
-<div class="card s5"><div class=h>Review points from the agent. Each says what does not agree and what to do. All must be cleared before the tick.</div>{''.join(pts_html)}
+<div class="card s5"><div class=h>Review points <span class=mut style="font-weight:400">· {n_fix} to fix · {n_read} to confirm · {len(done_)} done</span></div>{''.join(pts_html)}
 <p class=mut style="margin:16px 0 0">The tick is recorded with your name and the time. Only ticked clients go to step 3. Getting data or building again removes the tick.</p></div></div>""")
     live, note = _agent_note(name)
     if note:
