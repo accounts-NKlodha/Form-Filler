@@ -1071,8 +1071,15 @@ def handle_post(path, query, body, form):
             pairs = [(d.name, s) for d in clients() if ff_fin.verified(d) for s in app.load(d).get("forms") or [] if s in app.SMART]
             added, refused = filing_queue.add(pairs)
             job = filing_queue.start()
-            m = f"{added} form{'s' if added != 1 else ''} added to the queue. "
-            m += ("Now log in on MCA, open the side panel and click Start the queue." if job else "Nothing waiting to file.")
+            inq = [j for j in filing_queue.load()["jobs"] if j["status"] in ("queued", "filling", "held")]
+            if added:
+                m = f"{added} form{'s' if added != 1 else ''} added to the queue. "
+            elif inq:
+                m = (f"Every ticked form is already in the queue ({len(inq)}). They are filled one after another in the same MCA window: "
+                     "the next one opens by itself when you submit the one being filled. ")
+            else:
+                m = "No ticked forms to add. "
+            m += ("Log in on MCA, open the side panel and click Start the queue." if job else "" if inq else "Tick clients on Review financials first.")
             for c, s, why in refused:
                 m += f"\nNot added, {c} {FORM_LABEL.get(s, s)}: {'; '.join(why)}"
             return _back("/file", m)
