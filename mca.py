@@ -848,19 +848,15 @@ def dashboard(msg=""):
                          f"<input type=hidden name=slug value={esc(p.stem)}><button>Start capture again</button></form></td></tr>")
         except Exception:  # noqa: BLE001
             continue
-    return f"""<!doctype html><html><head><meta charset=utf-8><title>MCA filler</title><style>
-body{{font:14px Segoe UI,Arial,sans-serif;margin:24px;color:#102a43}} table{{border-collapse:collapse;margin:8px 0 24px}}
-td,th{{border:1px solid #bcccdc;padding:6px 10px;text-align:left;vertical-align:middle}} th{{background:#d9e2ec}}
-tr.active td{{background:#e3f9e5}} form{{display:inline}} button{{padding:4px 10px}} .msg{{background:#fff3c4;padding:8px 12px;white-space:pre-wrap}}
-</style></head><body><p><a href="/">&larr; Filing app</a></p><h2>MCA form filler: forms &amp; settings</h2>
-<p><a href="/adt1">ADT-1 for many companies &rarr;</a></p>
-{f'<div class=msg>{esc(msg)}</div>' if msg else ''}
-<p>Active inputs workbook (used by Alt+Shift+F): <b>{esc(active) or 'none'}</b></p>
-<h3>Clients</h3><p>One folder per client under <code>{esc(CLIENTS)}</code>, holding that client's Schedule III workbook.</p>
-<form method=post action=/newclient>New client folder: <input name=name size=40> <button>Create</button></form>
-<table><tr><th>Client</th><th>Schedule III workbook</th><th>MCA inputs</th><th></th></tr>{''.join(rows) or '<tr><td colspan=4>none yet</td></tr>'}</table>
-<h3>Captured forms</h3><table><tr><th>Form</th><th>Fields</th><th>Read via</th><th>Captured</th><th>Mapping</th><th>Pages captured</th><th></th></tr>{''.join(dumps) or '<tr><td colspan=7>none yet: open a form on MCA and press Alt+Shift+D</td></tr>'}</table>
-</body></html>"""
+    body = f"""<div class=head><div><div class=crumb>Set-up</div><h1>Captured forms</h1></div></div>
+<div class=card><div class=h>MCA forms the tool has learnt, page by page</div>
+<table><tr><th>Form</th><th class=n>Fields</th><th>Read via</th><th>Captured</th><th>Mapping</th><th>Pages captured</th><th></th></tr>{''.join(dumps) or '<tr><td colspan=7 class=mut>None yet: open a form on MCA and press Alt+Shift+D.</td></tr>'}</table></div>
+<div class=card><div class=h>Client folders and their inputs workbook</div>
+<p class=mut style="margin:0 0 12px">One folder per client under <code>{esc(CLIENTS)}</code>. Workbook used by Alt+Shift+F now: <b>{esc(active) or 'none'}</b>.</p>
+<form method=post action=/newclient class=row style="margin-bottom:12px"><label class=f>New client folder<input type=text name=name style="width:320px"></label><button class=sm>Create</button></form>
+<table><tr><th>Client</th><th>Schedule III workbook</th><th>MCA inputs</th><th></th></tr>{''.join(rows) or '<tr><td colspan=4 class=mut>None yet.</td></tr>'}</table></div>"""
+    import ff_ui
+    return ff_ui.shell("Captured forms", body, "/admin", msg)
 
 
 class Handler(BaseHTTPRequestHandler):

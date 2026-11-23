@@ -95,7 +95,7 @@ aside a.nv:hover{background:var(--side-on)}aside a.on{background:#fff;color:var(
 aside a.nv .k{width:20px;height:20px;border-radius:10px;border:1px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;opacity:.85}
 aside .gap{height:24px}
 aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 12px 0;font-size:13px;line-height:18px}
-aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}
+aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}aside .more a.on{opacity:1;font-weight:600;color:#fff;background:none}
 aside .who{display:flex;flex-direction:column;gap:4px;padding:12px;border-top:1px solid var(--side-line);margin-top:12px;font-size:13px}
 aside .who input{height:32px;border-radius:6px;border:1px solid var(--side-line);background:var(--side-on);color:#fff;padding:0 8px;font:inherit}
 main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
@@ -143,12 +143,32 @@ tr.sub td{background:var(--surface);font-size:13px;padding:5px 8px}tr.sub td:fir
 .doc .side{display:flex;gap:8px;align-items:center;justify-content:flex-end}.pick{position:relative;overflow:hidden}
 .pick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}.pick:focus-within{outline:2px solid var(--brass)}
 .sec{font-size:13px;font-weight:600;color:var(--mfg);margin:20px 0 0;padding:0 8px 8px}.sec:first-of-type{margin-top:4px}
-.bar{height:6px;background:var(--muted);border-radius:3px;overflow:hidden;margin:8px 0 4px}.bar>i{display:block;height:6px;background:var(--good)}
+.pbar{height:6px;background:var(--muted);border-radius:3px;overflow:hidden;margin:8px 0 4px}.pbar>i{display:block;height:6px;background:var(--good)}
 @media (min-width:1101px) and (min-height:640px){main:has(>.fit){height:100vh;box-sizing:border-box;overflow:hidden;padding-bottom:24px}
 .fit{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}.fit>.card{overflow-y:auto;min-height:0;scrollbar-gutter:stable}
 .fit>.card th{position:sticky;top:-24px;background:var(--card);padding-top:8px;z-index:1}}
 .total td{font-weight:600}.hd td{font-weight:600;color:var(--mfg);background:var(--surface)}
 """
+
+def _legacy_css():
+    """Component styles the older screens still use (client details, Local AI), on this shell's colours and type scale."""
+    keep = (".phead", ".eyebrow", ".kpis", "@media (min-width:640px){.kpis", ".kpi", ".card h2", ".num{", ".num.done", ".step.done",
+            ".grid{", ".drop", ".clients", ".pill", "ol.how", ".bar", ".how4", ".guard", ".chead", ".prog", ".stepper", "label.muted",
+            "button.primary", "button.go")
+    rules = "\n".join(l for l in app.CSS.splitlines() if l.startswith(keep))
+    return (":root{--foreground:var(--fg);--background:var(--bg);--primary-foreground:var(--on-primary);--secondary:var(--muted);"
+            "--secondary-foreground:var(--fg);--muted-foreground:var(--mfg);--accent:var(--muted);--destructive:var(--bad);--success:var(--good);"
+            "--warning-foreground:var(--fg);--border-strong:var(--strong);--ring:var(--brass);--brass-foreground:var(--on-primary);"
+            "--shadow-xs:none;--shadow-panel:none;--shadow-raised:none;--ink:var(--fg);--line:var(--border);--go:var(--good)}\n" + rules + """
+.muted{color:var(--mfg);font-size:13px}.warn{color:var(--bad);font-weight:500}.sug{border-color:var(--info);color:var(--info)}.you{border-color:var(--good);color:var(--good)}
+.phead{border-bottom:0;padding-bottom:0;margin-bottom:0}.phead p{font-size:15px}.eyebrow{text-transform:none;letter-spacing:0;font-size:13px;font-weight:400}.eyebrow::before{display:none}
+.kpis{margin-bottom:0;gap:24px}.kpi{animation:none;box-shadow:none;padding:24px}.kpi .l,.prog .l,label.muted{text-transform:none;letter-spacing:0;font-size:13px;font-weight:500}
+.kpi .s,.pill,.chead .meta span,.chead .meta span.mono,.sidefoot{font-size:13px}.card h2{font-size:16px;margin:0 0 12px}
+.stepper{position:static;margin:0;box-shadow:none}.pill.on::before{animation:none}.drop{min-height:104px}
+button.primary,.btn.primary,button.go{background:var(--primary);border-color:var(--primary);color:var(--on-primary);height:40px}button.go::before{display:none}
+td button,td .btn{height:32px;font-size:13px;padding:0 12px}tr.active td{background:var(--muted)}code{font-size:13px}
+""")
+
 
 SCRIPT = """<script>
 (()=>{const k='ff_user';const box=document.getElementById('who');let v='';try{v=localStorage.getItem(k)||''}catch(e){}
@@ -164,7 +184,8 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
 })();</script>"""
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
-       None, ("/agents", "", "Agent queue"), ("/audit", "", "Audit trail")]
+       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail")]
+MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
 def shell(title, body, active="", msg="", refresh=0):
@@ -179,10 +200,10 @@ def shell(title, body, active="", msg="", refresh=0):
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>{esc(title)} · Form Filler</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<style>{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
+<style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
 <aside><a class=brand href="/data">MCA automation<small>Form Filler · N K Lodha &amp; Co</small></a>
 {''.join(nav)}
-<div class=more><a href="/filings">Client details and questions</a><a href="/adt1">ADT-1 companies</a><a href="/admin">Captured forms</a><a href="/ai">Local AI</a></div>
+<div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div>
 <label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Recorded on approvals"></label></aside>
 <main>{f'<div class=msg role=status>{esc(msg)}</div>' if msg else ''}{body}</main>{SCRIPT}</body></html>"""
 
@@ -460,12 +481,20 @@ d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');cons
            f"<button class=sm {'' if ai_on else 'disabled'}>Read the documents with local AI and suggest the inputs</button>"
            f"<span class=mut>{'Next step once the documents are in. Nothing is saved until you accept the answers.' if ai_on else 'Local AI is off: turn it on under Local AI.'}</span></form>")
     return (f"<div class=h>{got} of {len(must)} needed documents are in for {esc(name)}</div>"
-            f"<div class=bar><i style=\"width:{pct}%\"></i></div>"
+            f"<div class=pbar><i style=\"width:{pct}%\"></i></div>"
             f"<p class=mut style=\"margin:0 0 4px\">Choose a file, or drop it on its row: it uploads straight away, so you can go down the list "
             f"without pressing anything else. Each file goes to the right place in the client folder and is noted in the audit trail.</p>"
             + (f"<div class=sec>Needed before filing</div>{need_html}" if need_html else "")
             + f"<div class=sec>Helpful: the agent and the local AI read these</div>{more_html}{nxt}"
             f"<p class=mut style=\"margin:16px 0 0\">Replaced or removed files are kept in the client's _replaced folder.</p>{js}")
+
+
+def _stale(folder, text, how, ans):
+    try:
+        import ai
+        return ai.stale_dates(folder, text, how, ans)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _review_tab(folder, tab):
@@ -554,12 +583,13 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
                     f"<option {'selected' if c.lower() == ans.lower() else ''}>{esc(c)}</option>" for c in [""] + list(opts[0])) + "</select>"
             else:
                 field = f"<input type=text name=\"q_{esc(key)}\" value=\"{esc(ans)}\" placeholder=\"{esc(how)}\" style=\"width:100%\" aria-label=Answer>"
-            t = (tag("Needed", "need") if key in app.MUST and not ans.strip() else tag("Your answer", "good") if key in answered
+            t = (tag("Last year's date", "badt") if _stale(folder, text, how, ans) else
+                 tag("Needed", "need") if key in app.MUST and not ans.strip() else tag("Your answer", "good") if key in answered
                  else tag("Suggested") if ans.strip() else "")
             trs.append(f"<tr><td style=\"width:50%\">{esc(text)}<div class=mut>{esc(how)}</div></td><td>{field}</td><td>{t}</td></tr>")
         return (f"<form method=post action=/ff/answers><input type=hidden name=c value=\"{esc(name)}\">"
                 f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div><table>{''.join(trs)}</table>"
-                f"<p class=row><button class=sm data-busy=Saving>Save answers</button> <a class=mut href=\"/ai/questions?c={q}\">Suggest answers with local AI</a></p></form>")
+                f"<p class=row><button class=sm data-busy=Saving>Save answers</button> <a class=btn href=\"/ai/questions?c={q}\">Suggest answers with local AI</a></p></form>")
     if tab == "reports":
         ok, why = ff_fin.docs_ready(folder)
         made = ff_fin.docs_list(folder)
@@ -654,11 +684,37 @@ def _qbtn(j, act, text):
 
 # ---------------------------------------------------------------- Agent queue
 
-def page_agents(show="all", msg=""):
+QTABS = [("jobs", "Tally and financials"), ("ai", "Local AI"), ("mca", "MCA filing")]
+
+
+def _ai_rows():
+    """Local AI runs: what was sent to the model and what came back."""
+    import ai
+    out = []
+    for r in ai.runs():
+        if r["state"] == "running":
+            st, got = tag("Working", "work"), f"{r['done']} of {r['questions'] or '?'} asked so far"
+        elif r["state"] == "error":
+            st, got = tag("Failed", "badt"), esc(r["error"])[:160]
+        else:
+            st = tag("Answers received", "good")
+            got = f"{r['answered']} of {r['questions']} answered" + (f"; {r['not_used']} last-year dates not used" if r.get("not_used") else "")
+        files = r["files"]
+        sent = (f"{len(files)} document{'s' if len(files) != 1 else ''}<div class=mut>{esc(', '.join(files[:4]))}{' ...' if len(files) > 4 else ''}</div>"
+                if files else "<span class=mut>None</span>")
+        took = f"{r['seconds'] // 60} min {r['seconds'] % 60} s" if r.get("seconds") else ""
+        out.append(f"<tr><td><a href=\"/ai/questions?c={quote(r['client'])}\">{esc(r['client'])}</a></td><td>{when(r['started'])}</td>"
+                   f"<td>{sent}</td><td>{r['questions'] or ''}</td><td>{got}</td><td>{esc(r['model'])}<div class=mut>{took}</div></td><td>{st}</td></tr>")
+    return out
+
+
+def page_agents(show="all", msg="", qtab="jobs"):
     A = ff_jobs.load()
     Q = filing_queue.load()
+    if qtab not in dict(QTABS):
+        qtab = "jobs"
     items = []
-    for j in A["jobs"]:
+    for j in A["jobs"] if qtab == "jobs" else []:
         st = {"queued": ("Queued", ""), "working": ("Working", "work"), "staff": ("Staff: " + j["now"][:50], "need"),
               "done": ("Done", "good"), "failed": ("Failed: retry", "badt")}[j["status"]]
         grp = {"queued": "working", "working": "working", "staff": "staff", "done": "done", "failed": "failed"}[j["status"]]
@@ -672,7 +728,7 @@ def page_agents(show="all", msg=""):
         items.append((j.get("updated", ""), grp, f"<tr><td><a href=\"/review?c={quote(j['client'])}\">{esc(j['client'])}</a></td>"
                       f"<td>{ff_jobs.KINDS.get(j['kind'], j['kind'])}</td><td>{esc(j['now'])}</td><td>{when(j.get('started'))}</td>"
                       f"<td>{tag(*st)}{acts}</td></tr>"))
-    for j in Q["jobs"]:
+    for j in Q["jobs"] if qtab == "mca" else []:
         s = j["status"]
         st = {"queued": ("Queued", ""), "filling": ("Working", "work"), "held": ("Failed: retry", "badt"),
               "saved": ("Staff: DSC and submit", "need"), "skipped": ("Skipped", ""),
@@ -685,7 +741,7 @@ def page_agents(show="all", msg=""):
                       f"<td>File {FORM_LABEL.get(j['slug'], j['slug'])}</td><td>{esc(now)}</td><td>{when(j.get('updated'))}</td><td>{tag(*st)}</td></tr>"))
     items.sort(key=lambda x: x[0], reverse=True)
     rows = [h for _, g, h in items if show == "all" or g == show]
-    filt = "".join(f"<a href=\"/agents?show={k}\">{tag(t, 'need' if k == show else '')}</a>"
+    filt = "".join(f"<a href=\"/agents?q={qtab}&show={k}\">{tag(t, 'need' if k == show else '')}</a>"
                    for k, t in (("all", "All"), ("working", "Working"), ("staff", "Waiting for staff"), ("done", "Done"), ("failed", "Failed")))
     log = "".join(f"<div class=log><span class=mut>{when(e['at'])}</span><span><b>{esc(e.get('client', ''))}</b>: {esc(e['text'])}"
                   f"{' · ' + esc(e['by']) if e.get('by') and e.get('by') != 'agent' else ''}</span></div>" for e in ff_audit.activity(40))
@@ -693,15 +749,32 @@ def page_agents(show="all", msg=""):
     acts = (f"<form method=post action=/ff/jobs/act><input type=hidden name=act value=\"{'resume' if paused else 'pause'}\">"
             f"<button>{'Resume' if paused else 'Pause all'}</button></form>"
             f"<form method=post action=/ff/jobs/act><input type=hidden name=act value=clear><button>Clear done</button></form>")
-    working = any(j["status"] in ("queued", "working") for j in A["jobs"]) or Q["running"]
-    body = (head(f"All clients · {fy_label()}" + (" · paused" if paused else ""), "Agent queue", acts)
-            + f"<div class=filters><span class=mut>Show</span>{filt}</div>"
-            + f"""<div class=g12><div class="card s8"><div class=h>One row per job, newest first. Jobs run one after another across the three steps.</div>
-<table><tr><th>Client</th><th>Job</th><th>Now doing</th><th>Started</th><th>Status</th></tr>{''.join(rows) or '<tr><td colspan=5 class=mut>No jobs.</td></tr>'}</table>
-<p class=mut style="margin:12px 0 0">Bold tags are jobs stopped for a person. Clicking a client opens it at the right step.</p></div>
+    ai_rows = _ai_rows()
+    ai_live = any("Working" in r for r in ai_rows)
+    working = any(j["status"] in ("queued", "working") for j in A["jobs"]) or Q["running"] or ai_live
+    n = {"jobs": sum(1 for j in A["jobs"] if j["status"] in ("queued", "working", "staff", "failed") and not
+                     (j["status"] == "staff" and "review point" in (j.get("now") or ""))),
+         "ai": sum(1 for r in ai_rows if "Working" in r),
+         "mca": sum(1 for j in Q["jobs"] if j["status"] in ("queued", "filling", "held"))}
+    tabs = "<nav class=tabs>" + "".join(
+        f"<a href=\"/agents?q={k}\" class=\"{'on' if k == qtab else ''}\">{t}{f' ({n[k]})' if n[k] else ''}</a>" for k, t in QTABS) + "</nav>"
+    if qtab == "ai":
+        table = (f"<div class=h>Every time documents were sent to the local model, and what came back. Nothing leaves the office network.</div>"
+                 f"<table><tr><th>Client</th><th>Sent</th><th>Documents sent</th><th>Questions</th><th>Answers received</th><th>Model</th><th>Status</th></tr>"
+                 f"{''.join(ai_rows) or '<tr><td colspan=7 class=mut>No runs yet. Start one from a client: Review financials, Documents.</td></tr>'}</table>"
+                 f"<p class=mut style=\"margin:12px 0 0\">Click a client to see each answer with the line it came from. Staff accept answers there; the model saves nothing by itself.</p>")
+    else:
+        what = ("Reading Tally, building Schedule III and drafting documents, one company at a time." if qtab == "jobs"
+                else "Forms being filled on MCA for clients with the verified tick. Staff log in, attach the DSC, submit and pay.")
+        table = (f"<div class=h>{what}</div>"
+                 f"<table><tr><th>Client</th><th>Job</th><th>Now doing</th><th>Started</th><th>Status</th></tr>{''.join(rows) or '<tr><td colspan=5 class=mut>Nothing here.</td></tr>'}</table>"
+                 f"<p class=mut style=\"margin:12px 0 0\">Bold tags are jobs stopped for a person. Clicking a client opens it at the right step.</p>")
+    body = (head(f"All clients · {fy_label()}" + (" · paused" if paused else ""), "Queues", acts if qtab == "jobs" else "") + tabs
+            + (f"<div class=filters><span class=mut>Show</span>{filt}</div>" if qtab != "ai" else "")
+            + f"""<div class="g12 fit"><div class="card s8">{table}</div>
 <div class="card s4"><div class=h>Activity log, newest first</div>{log or '<p class=mut>Nothing yet.</p>'}
 <p class=mut style="margin:12px 0 0">Every line here is also written to that client's audit trail.</p></div></div>""")
-    return shell("Agent queue", body, "/agents", msg, refresh=5 if working else 0)
+    return shell("Queues", body, "/agents", msg, refresh=5 if working else 0)
 
 
 def _pick_form(j):
@@ -839,7 +912,7 @@ def handle_get(path, query):
     if path == "/file":
         return 200, page_file(q.get("form", "all"), msg), "text/html"
     if path == "/agents":
-        return 200, page_agents(q.get("show", "all"), msg), "text/html"
+        return 200, page_agents(q.get("show", "all"), msg, q.get("q", "jobs")), "text/html"
     if path == "/audit":
         return 200, page_audit(q.get("c", ""), q.get("f", ""), q.get("cat", "all"), msg), "text/html"
     if path == "/filings":

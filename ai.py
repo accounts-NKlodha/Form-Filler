@@ -165,6 +165,58 @@ SYSTEM = ("You help an Indian chartered accountant's staff prepare MCA (ROC) ann
           "into 'source'. If the documents do not answer it, give answer \"\" and confidence \"none\". "
           "Dates as DD/MM/YYYY. For Yes / No questions answer exactly Yes or No. Never invent figures, DINs or dates.")
 
+THIS_YEAR = ("This filing is for the financial year {start} to {end}. Most documents given are LAST year's filed forms, so their "
+             "dates belong to the year before. For a question about a date or event of THIS financial year (AGM, board meetings, "
+             "signing, approval, resolution), answer only when the document shows a date that fits this financial year or the "
+             "months after it; otherwise give answer \"\" and confidence \"none\". Standing facts (names, DINs, addresses, auditor, "
+             "type of company) may be taken from last year's forms.")
+_DATE = re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b")
+
+
+def fy_window(folder):
+    """(first day, last day) of the financial year being filed, from the client's details (default 2025-26)."""
+    from datetime import date
+    try:
+        d, m, y = (int(x) for x in str(_app().load(folder).get("fy_end") or "31/03/2026").split("/"))
+        end = date(y, m, d)
+    except (ValueError, TypeError):
+        end = date(2026, 3, 31)
+    return date(end.year - 1, 4, 1), end
+
+
+def date_rule(text, how):
+    """Which dates fit a question: 'in' (inside the year), 'after' (after the year end) or None (no rule)."""
+    if "DD/MM/YYYY" not in (how or "").upper():
+        return None
+    t = (text or "").lower()
+    if "appoint" in t or "incorporat" in t:
+        return None  # may rightly be an older date
+    return "in" if "during the year" in t else "after"
+
+
+def stale_dates(folder, text, how, answer):
+    """Dates in an answer that cannot belong to this year's filing (they are last year's). [] when the answer fits."""
+    from datetime import date
+    rule = date_rule(text, how)
+    if not rule or not answer:
+        return []
+    start, end = fy_window(folder)
+    bad = []
+    for d, m, y in _DATE.findall(str(answer)):
+        try:
+            v = date(int(y), int(m), int(d))
+        except ValueError:
+            continue
+        if (rule == "in" and not start <= v <= end) or (rule == "after" and v <= end):
+            bad.append(v.strftime("%d/%m/%Y"))
+    return bad
+
+
+def need_text(folder, text, how):
+    start, end = fy_window(folder)
+    return (f"a date from {start:%d/%m/%Y} to {end:%d/%m/%Y}" if date_rule(text, how) == "in" else f"a date after {end:%d/%m/%Y}")
+
+
 SCHEMA = {"type": "object", "properties": {"answers": {"type": "array", "items": {
     "type": "object", "properties": {"key": {"type": "string"}, "answer": {"type": "string"},
                                      "source": {"type": "string"},
@@ -191,6 +243,9 @@ def run(name):
         passages = chunks(folder)
         if not passages:
             raise ValueError("no PDFs in the client folder to read (upload last year's filed forms first)")
+        start_, end_ = fy_window(folder)
+        this_year = THIS_YEAR.format(start=start_.strftime("%d/%m/%Y"), end=end_.strftime("%d/%m/%Y"))
+        log["fy"] = f"{start_:%d/%m/%Y} to {end_:%d/%m/%Y}"
         size = max(1, int(s.get("batch") or 6))
         batches = [qs[i:i + size] for i in range(0, len(qs), size)]
         job.update(total=len(qs), done=0, files=sorted({f for f, _ in passages}))
@@ -201,7 +256,7 @@ def run(name):
             ask = "\n".join(f"- key: {k} | question: {t} | format: {h}" for k, t, h, _, _ in batch)
             user = f"COMPANY DOCUMENTS:\n{docs}\n\nQUESTIONS:\n{ask}\n\nReply as JSON with one item per key."
             t0 = time.time()
-            raw = chat(SYSTEM, user, SCHEMA)
+            raw = chat(SYSTEM + " " + this_year, user, SCHEMA)
             try:
                 items = json.loads(raw).get("answers", [])
             except ValueError:
@@ -211,16 +266,29 @@ def run(name):
                 if k in {q[0] for q in batch}:
                     results[k] = {"answer": str(it.get("answer", "")).strip(), "source": str(it.get("source", "")).strip()[:400],
                                   "confidence": it.get("confidence", "low")}
+                    qrow = next(q for q in batch if q[0] == k)
+                    if stale_dates(folder, qrow[1], qrow[2], results[k]["answer"]):
+                        # last year's date: kept for reference, never offered as this year's answer
+                        results[k].update(last_year=results[k]["answer"], answer="", confidence="none")
             log["batches"].append({"keys": [q[0] for q in batch], "files": sorted({f for f, _ in ctx}),
                                    "seconds": round(time.time() - t0, 1), "items": items})
             job["done"] = min(job["total"], job["done"] + len(batch))
             _save(folder, name, results, s, final=False)
         _save(folder, name, results, s, final=True)
         job["state"] = "done"
+        got = sum(1 for r in results.values() if r.get("answer"))
+        log.update(questions=len(qs), answered=got, not_used=sum(1 for r in results.values() if r.get("last_year")))
+        try:
+            import ff_audit
+            ff_audit.event(folder, "ai", f"Local AI ({s['model']}) read {len(job.get('files') or [])} documents and suggested "
+                           f"{got} of {len(qs)} inputs; nothing is saved until staff accept", by="agent")
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as e:  # noqa: BLE001
         job.update(state="error", error=str(e))
         log["error"] = str(e)
     log["finished"] = datetime.now().isoformat(timespec="seconds")
+    log["files"] = job.get("files") or []
     (folder / "logs").mkdir(exist_ok=True)
     (folder / "logs" / f"ai_{datetime.now():%Y%m%d_%H%M%S}.json").write_text(json.dumps(log, indent=1), encoding="utf-8")
 
@@ -239,6 +307,38 @@ def start(name):
         _jobs[name] = {"state": "running", "done": 0, "total": 0, "error": "", "started": time.time()}
     threading.Thread(target=run, args=(name,), daemon=True).start()
     return True
+
+
+def runs(limit=60):
+    """Every Local AI run, newest first: what was sent, what came back. Running ones first, then the run logs in each client folder."""
+    app = _app()
+    out = []
+    for name, j in list(_jobs.items()):
+        if j.get("state") == "running":
+            out.append({"client": name, "started": datetime.fromtimestamp(j["started"]).isoformat(timespec="seconds"), "finished": "",
+                        "model": settings()["model"], "files": j.get("files") or [], "questions": j.get("total") or 0,
+                        "answered": None, "done": j.get("done") or 0, "state": "running", "error": "", "not_used": 0})
+    if app.CLIENTS.exists():
+        for d in app.CLIENTS.iterdir():
+            for p in sorted((d / "logs").glob("ai_*.json"), reverse=True)[:10] if (d / "logs").exists() else []:
+                try:
+                    g = json.loads(p.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                b = g.get("batches") or []
+                files = g.get("files") or sorted({f for x in b for f in x.get("files", [])})
+                asked = g.get("questions") or sum(len(x.get("keys", [])) for x in b)
+                got = g.get("answered")
+                if got is None:
+                    got = sum(1 for x in b for it in x.get("items", []) if str(it.get("answer", "")).strip())
+                out.append({"client": d.name, "started": g.get("started", ""), "finished": g.get("finished", ""), "model": g.get("model", ""),
+                            "files": files, "questions": asked, "answered": got, "done": asked, "not_used": g.get("not_used", 0),
+                            "seconds": round(sum(x.get("seconds", 0) for x in b)), "state": "error" if g.get("error") else "done",
+                            "error": g.get("error", "")})
+    out.sort(key=lambda r: (r["state"] != "running", r["started"]), reverse=False)
+    run_, rest = [r for r in out if r["state"] == "running"], [r for r in out if r["state"] != "running"]
+    rest.sort(key=lambda r: r["started"], reverse=True)
+    return (run_ + rest)[:limit]
 
 
 def load_result(folder):
@@ -281,6 +381,7 @@ with the line it relied on, and flags where it differs from the current answer.<
 
 def page_questions(name, msg=""):
     app = _app()
+    import ff_ui
     folder = app.folder_of(name)
     if not folder.exists():
         return page_status(f"No client called {name}.")
@@ -290,52 +391,65 @@ def page_questions(name, msg=""):
     ans = res.get("answers", {})
     qs, _ = app.questions(folder)
     running = job.get("state") == "running"
-    refresh = '<meta http-equiv=refresh content=3>' if running else ""
+    start, end = fy_window(folder)
     if running:
         pct = int(100 * job.get("done", 0) / job["total"]) if job.get("total") else 0
-        head = (f"<p><b>Reading the documents with {app.esc(s['model'])}:</b> {job.get('done', 0)} of {job.get('total') or '?'} questions "
-                f"({pct}%).</p><div style='height:8px;background:var(--line);border-radius:4px'><div style='height:8px;width:{pct}%;"
-                f"background:var(--go);border-radius:4px'></div></div><p class=muted>Files: {app.esc(', '.join(job.get('files') or []))}</p>")
+        head = (f"<div class=h>Reading the documents with {app.esc(s['model'])}: {job.get('done', 0)} of {job.get('total') or '?'} questions</div>"
+                f"<div class=pbar><i style=\"width:{pct}%\"></i></div><p class=mut>Sent to the model: {app.esc(', '.join(job.get('files') or []))}</p>")
     elif job.get("state") == "error":
-        head = f"<p class=err>Stopped: {app.esc(job.get('error'))}</p>"
+        head = f"<div class=h>The last run stopped</div><p class=err>{app.esc(job.get('error'))}</p>"
     elif res:
-        head = f"<p class=muted>Last run {app.esc(res.get('when', ''))} with {app.esc(res.get('model', ''))}{'' if res.get('complete') else ' (incomplete)'}.</p>"
+        head = (f"<div class=h>Last run {ff_ui.when(res.get('when', ''))} with {app.esc(res.get('model', ''))}"
+                f"{'' if res.get('complete') else ' (not finished)'}</div>")
     else:
-        head = "<p class=muted>Not run yet for this client.</p>"
-    agree = differ = new = 0
+        head = "<div class=h>Not run yet for this client</div>"
+    agree = differ = new = stale = 0
     rows = []
     for key, text, how, cur, came in qs:
-        a = ans.get(key)
+        a = dict(ans.get(key) or {})
+        if a.get("answer") and stale_dates(folder, text, how, a["answer"]):  # a run made before this check
+            a.update(last_year=a["answer"], answer="", confidence="none")
+        cur_stale = stale_dates(folder, text, how, cur)
         if not a:
-            verdict, ai_cell = "", "<span class=muted>-</span>"
-        elif not a["answer"] or a.get("confidence") == "none":
-            verdict, ai_cell = "<span class=tag>not in documents</span>", "<span class=muted>no answer found</span>"
+            verdict, ai_cell = "", "<span class=mut>Not asked yet</span>"
+        elif a.get("last_year"):
+            stale += 1
+            verdict = ff_ui.tag("Enter this year's date", "need")
+            ai_cell = (f"<span class=mut>Last year's filing shows</span> <b>{app.esc(a['last_year'])}</b>"
+                       f"<div class=mut>Not used: this filing needs {need_text(folder, text, how)}.</div>")
+        elif not a.get("answer") or a.get("confidence") == "none":
+            verdict, ai_cell = ff_ui.tag("Not in the documents"), "<span class=mut>No answer found</span>"
         else:
             if not cur.strip():
-                verdict, new = "<span class='tag sug'>AI filled a blank</span>", new + 1
+                verdict, new = ff_ui.tag("AI filled a blank", "sug"), new + 1
             elif _norm(cur) == _norm(a["answer"]):
-                verdict, agree = "<span class='tag you'>agrees</span>", agree + 1
+                verdict, agree = ff_ui.tag("Agrees", "good"), agree + 1
             else:
-                verdict, differ = "<span class='tag need'>check: differs</span>", differ + 1
-            ai_cell = (f"<b>{app.esc(a['answer'])}</b> <span class=muted>({app.esc(a.get('confidence', ''))})</span>"
-                       f"<div class=muted style='margin-top:4px;font-style:italic'>&ldquo;{app.esc(a.get('source', ''))}&rdquo;</div>")
-        value = cur if cur.strip() else (a or {}).get("answer", "")
-        field = f"<input type=text name=\"q_{app.esc(key)}\" value=\"{app.esc(value)}\">"
-        rows.append(f"<tr><td style='width:30%'>{app.esc(text)}<br><span class=muted>{app.esc(how)}</span></td>"
-                    f"<td style='width:34%'>{ai_cell}</td><td>{field}<div style='margin-top:4px'>{verdict}</div></td></tr>")
-    summary = (f"<div class=kpis><div class=kpi><div class=l>Agree</div><div class=v>{agree}</div><div class=s>AI matches the current answer</div></div>"
-               f"<div class=kpi><div class=l>Differ</div><div class=v>{differ}</div><div class=s>check these before filing</div></div>"
-               f"<div class=kpi><div class=l>Blanks filled</div><div class=v>{new}</div><div class=s>taken from the documents</div></div></div>") if ans else ""
-    body = f"""{refresh}<div class=phead><h1>Local AI check: {app.esc(name)}</h1><p>Answers read from last year's filed forms and the reports in the client folder, with the line each one came from.</p></div>
-{summary}<div class=card><h2>Run</h2>{head}
-<form method=post action=/ai/run style="display:inline"><input type=hidden name=c value="{app.esc(name)}">
-<button class=primary {'disabled' if running or not s['enabled'] else ''}>{'Run again' if res else 'Suggest answers with local AI'}</button></form>
-<a class=btn href="/client?c={quote(name)}#s3">Back to the client</a>
-{'' if s['enabled'] else ' <span class=warn>Local AI is off in <a href=/ai>settings</a>.</span>'}</div>
-<div class=card><form method=post action=/app/answers><input type=hidden name=c value="{app.esc(name)}">
-<table><tr><th>Question</th><th>AI answer and the line it used</th><th>Answer to save</th></tr>{''.join(rows)}</table>
-<p><button class=primary>Save answers and rebuild</button> <span class=muted>Blanks take the AI's answer; nothing else changes unless you edit it.</span></p></form></div>"""
-    return app.shell(f"Local AI: {name}", body, msg)
+                verdict, differ = ff_ui.tag("Differs: check", "need"), differ + 1
+            ai_cell = (f"<b>{app.esc(a['answer'])}</b> <span class=mut>({app.esc(a.get('confidence', ''))} confidence)</span>"
+                       f"<div class=mut style=\"margin-top:4px\">&ldquo;{app.esc(a.get('source', ''))}&rdquo;</div>")
+        if cur_stale:
+            verdict = ff_ui.tag("Saved answer is last year's date", "badt")
+        value = cur if cur.strip() else a.get("answer", "")
+        field = f"<input type=text name=\"q_{app.esc(key)}\" value=\"{app.esc(value)}\" style=\"width:100%\" aria-label=\"Answer to save\">"
+        rows.append(f"<tr><td style=\"width:30%\">{app.esc(text)}<div class=mut>{app.esc(how)}</div></td>"
+                    f"<td style=\"width:36%\">{ai_cell}</td><td>{field}<div style=\"margin-top:6px\">{verdict}</div></td></tr>")
+    summary = (f"<p style=\"margin:0\">{agree} agree with the saved answer · {differ} differ · {new} blanks filled · "
+               f"{stale} of last year's dates not used</p>") if ans else ""
+    q = quote(name)
+    acts = (f"<a class=btn href=\"/review?c={q}&tab=questions\">Back to the inputs</a>"
+            f"<form method=post action=/ai/run><input type=hidden name=c value=\"{app.esc(name)}\">"
+            f"<button {'disabled' if running or not s['enabled'] else ''}>{'Run again' if res else 'Read the documents'}</button></form>")
+    off = "" if s["enabled"] else "<p class=err>Local AI is off. Turn it on under Local AI settings.</p>"
+    body = (ff_ui.head(f"Step 2 of 3 · {app.esc(name)} · filing for {start:%d/%m/%Y} to {end:%d/%m/%Y}", "Local AI suggestions", acts)
+            + f"<div class=card>{head}{summary}{off}<p class=mut style=\"margin:12px 0 0\">The model reads last year's filed forms and the reports in the "
+              f"client folder. Standing facts are carried forward with the line they came from. Dates of last year's AGM, meetings and signing "
+              f"are shown for reference only and never filled in for this year. <a href=\"/agents?q=ai\">See what was sent and received</a></p></div>"
+            + f"<div class=card><form method=post action=/ff/answers><input type=hidden name=c value=\"{app.esc(name)}\">"
+              f"<table><tr><th>Question</th><th>What the AI found, and the line it used</th><th>Answer to save</th></tr>{''.join(rows)}</table>"
+              f"<p class=row style=\"margin:16px 0 0;align-items:center\"><button class=p data-busy=Saving>Save answers</button>"
+              f"<span class=mut>Blanks take the AI's answer. Nothing else changes unless you edit it.</span></p></form></div>")
+    return ff_ui.shell(f"Local AI: {name}", body, "/review", msg, refresh=3 if running else 0)
 
 
 def handle_get(path, q):

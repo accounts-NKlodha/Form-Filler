@@ -529,6 +529,15 @@ def review_points(folder):
     # 5. what only staff know (dates of meetings etc.)
     if app.inputs_path(folder).exists():
         open_q = app.steps(folder)["open_q"]
+        stale = []
+        try:
+            import ai
+            stale = [t for _, t, how, a, _ in app.questions(folder)[0] if ai.stale_dates(folder, t, how, a)]
+        except Exception:  # noqa: BLE001
+            pass
+        if stale:
+            add("questions-stale", f"{len(stale)} input{'s' if len(stale) != 1 else ''} for the forms carry last year's date", "questions",
+                "; ".join(stale[:6]) + ". Enter this year's dates on Inputs for the forms.")
         if open_q:
             add("questions", "Questions for the forms still to answer", "questions", "; ".join(open_q))
         else:

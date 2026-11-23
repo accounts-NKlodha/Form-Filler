@@ -879,27 +879,25 @@ def page(msg=""):
             f"<tr{' class=active' if is_cur else ''}><td>{c['_row']}</td><td><b>{_esc(c.get('name', ''))}</b><br><small>{_esc(c.get('cin', ''))}</small></td>"
             f"<td>{_esc(c.get('status', ''))}</td><td>{_esc(vals.get('aud_name', ''))}</td>"
             f"<td>{pf.strftime('%d/%m/%Y') if isinstance(pf, date) else ''} – {pt.strftime('%d/%m/%Y') if isinstance(pt, date) else ''}</td>"
-            f"<td>{'<span class=ok>ready</span>' if not miss else '<span class=miss>missing: ' + _esc(', '.join(miss)) + '</span>'}</td>"
+            f"<td>{'<span class=ok>Ready</span>' if not miss else '<span class=err>Missing: ' + _esc(', '.join(miss)) + '</span>'}</td>"
             f"<td><form method=post action=/adt1/select><input type=hidden name=which value=\"{_esc(key)}\">"
             f"<button {'disabled' if is_cur else ''}>{'Filling this' if is_cur else 'Fill'}</button></form></td></tr>")
     done = sum(1 for c in companies if str(c.get("status", "")).lower() in ("saved", "submitted", "skip"))
-    return f"""<!doctype html><html><head><meta charset=utf-8><title>ADT-1 companies</title><style>
-body{{font:14px Segoe UI,Arial,sans-serif;margin:24px;color:#102a43}} table{{border-collapse:collapse;margin:8px 0 24px}}
-td,th{{border:1px solid #bcccdc;padding:5px 9px;text-align:left;vertical-align:middle}} th{{background:#d9e2ec}}
-tr.active td{{background:#e3f9e5}} form{{display:inline}} button{{padding:4px 10px}} .msg{{background:#fff3c4;padding:8px 12px;white-space:pre-wrap}}
-.ok{{color:#2f8132}} .miss{{color:#b44d12}} small{{color:#627d98}}</style></head><body>
-<p><a href="/">&larr; MCA filler</a></p><h2>ADT-1 companies</h2>
-{f'<div class=msg>{_esc(msg)}</div>' if msg else ''}
-<p>Workbook: <code>{_esc(BOOK)}</code>. Companies: <b>{len(companies)}</b>, done (Saved / Submitted / Skip): <b>{done}</b>.
- Form captured: <b>{_esc(slug) if slug else 'not yet: open ADT-1 on MCA and press Alt+Shift+D on each page'}</b>. Portal fields mapped: <b>{mapped}</b>.</p>
-<p><form method=post action=/adt1/import><button>Load master data</button></form>
- <form method=post action=/adt1/prefill><button>Prefill from files</button></form>
- <form method=post action=/adt1/columns><button>Rebuild column map</button></form>
- <small>Prefill reads MVP\\ADT1\\source (company master, earlier ADT-1 / AOC-4 PDFs) and the clients folders; it fills blank cells only.</small></p>
-<p>Click <b>Fill</b> next to a company, open <b>that company's</b> ADT-1 draft on MCA, then press Alt+Shift+F. The box shows the company: check it before you click Fill.</p>
+    body = f"""<div class=head><div><div class=crumb>Auditor appointment for many companies</div><h1>ADT-1 companies</h1></div>
+<div class=acts><form method=post action=/adt1/import><button>Load master data</button></form>
+<form method=post action=/adt1/prefill><button>Prefill from files</button></form>
+<form method=post action=/adt1/columns><button>Rebuild column map</button></form></div></div>
+<div class=card><div class=h>{len(companies)} companies, {done} done (Saved, Submitted or Skip). Portal fields mapped: {mapped}</div>
+<p class=mut style="margin:0 0 12px">Workbook: <code>{_esc(BOOK)}</code>. Form captured: {_esc(slug) if slug else 'not yet: open ADT-1 on MCA and press Alt+Shift+D on each page'}.
+Prefill reads the ADT1 source folder (company master, earlier ADT-1 and AOC-4 PDFs) and the client folders; it fills blank cells only.</p>
+<p>Click Fill next to a company, open that company's ADT-1 draft on MCA, then press Alt+Shift+F. The box shows the company: check it before you click Fill.</p>
 <table><tr><th>Row</th><th>Company</th><th>Status</th><th>Auditor</th><th>Period</th><th>Check</th><th></th></tr>
-{''.join(rows) or '<tr><td colspan=7>No companies yet: type them on the Companies sheet or click Prefill.</td></tr>'}</table>
-</body></html>"""
+{''.join(rows) or '<tr><td colspan=7 class=mut>No companies yet: type them on the Companies sheet or click Prefill.</td></tr>'}</table></div>"""
+    try:
+        import ff_ui
+        return ff_ui.shell("ADT-1 companies", body, "/adt1", msg)
+    except ImportError:  # run on its own, outside the Form Filler server
+        return f"<!doctype html><html><head><meta charset=utf-8><title>ADT-1 companies</title></head><body>{body}</body></html>"
 
 
 DONE = ("skip", "filled", "saved", "submitted")
