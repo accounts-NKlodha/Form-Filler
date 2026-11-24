@@ -12,7 +12,7 @@ from urllib.parse import quote
 import app
 import ff_audit
 import ff_ui
-from gst import portal, work
+from gst import gstr9, portal, work
 
 TOKEN = secrets.token_urlsafe(18)   # new on every start; a web page cannot read it, so it cannot post files here
 work._trail = lambda folder, text, by, **data: ff_audit.event(folder, "gst", text, by=by or "staff", **data)
@@ -85,6 +85,45 @@ def page_list(fy, msg=""):
     return ff_ui.shell("GST annual returns", body, "/gst", msg)
 
 
+def _tabs(folder, g, fy, on):
+    return "<div class=tabs>" + "".join(f"<a{' class=on' if k == on else ''} href=\"{_link(folder, g, fy, tab=k)}\">{t}</a>"
+                                        for k, t in (("", "Files and checks"), ("draft", "GSTR-9 draft"))) + "</div>"
+
+
+def page_draft(folder, g, fy, msg=""):
+    data, _ = work.load(folder, g, fy)
+    d = gstr9.build(fy, data)
+    top = ff_ui.head(f"<a href=\"/gst?fy={fy}\">GST annual returns</a> / {g} / FY {fy}", folder.name) + _tabs(folder, g, fy, "draft")
+    if not d["ready"]:
+        why = "".join(f"<li>{esc(k)}: {esc(', '.join(v) if len(v) < 12 else 'all 12 months')}</li>" for k, v in d["missing"])
+        return ff_ui.shell(folder.name + " GST", top + f"<div class=card><div class=h>The draft needs GSTR-1 summary and GSTR-3B for all 12 months</div><ul>{why}</ul></div>", "/gst", msg)
+    num = lambda a, k: "" if a is None or a.get(k) is None else money(a[k])
+    rows, part = "", ""
+    names = {"4": "4. Supplies on which tax is payable", "5": "5. Supplies on which tax is not payable", "6": "6. ITC availed",
+             "7": "7. ITC reversed", "8": "8. Other ITC information", "9": "9. Tax paid", "1": "10 to 18. Later tables"}
+    for l in d["lines"]:
+        if l["table"][0] != part:
+            part = l["table"][0]
+            rows += f"<tr class=hd><td colspan=8>{names[part]}</td></tr>"
+        a = l["amounts"]
+        state = {"draft": "", "check": ff_ui.tag("Confirm", "need"), "needs": ff_ui.tag("Needs input", "badt")}[l["state"]]
+        src = esc(l["source"]) + (f"<div class=mut>{esc(l['note'])}</div>" if l["note"] else "")
+        rows += (f"<tr{' class=total' if l['table'] in ('4N', '5N', '7J') else ''}><td>{esc(l['table'])}</td><td>{esc(l['label'])}</td>"
+                 + "".join(f"<td class=n>{num(a, k)}</td>" for k in gstr9.COLS[:4]) + f"<td>{src}</td><td>{state}</td></tr>")
+    t = d["totals"]
+    tie = ("Tax in table 4N equals tax payable in GSTR-3B." if abs(t["tax_gap"]) <= 1 else
+           f"Tax in table 4N differs from GSTR-3B by Rs {money(t['tax_gap'])}: this is tax short or excess paid (tables 9, 10, 11 or DRC-03).")
+    side = (f"<div class=\"card s3\"><div class=h>Summary</div><p style=\"margin:0 0 8px\">Turnover (5N): Rs {money(t['turnover'])}</p>"
+            f"<p style=\"margin:0 0 8px\">GSTR-9C: {'needed, turnover is above Rs 5 crore' if t['gstr9c'] else 'not needed on this turnover'}.</p>"
+            f"<p style=\"margin:0 0 8px\">{tie}</p><p style=\"margin:0 0 8px\">{t['check']} lines to confirm, {t['needs']} need input.</p>"
+            "<p class=mut style=\"margin:0\">A working draft from the filed returns, for review. It is not the return: the books in Tally, "
+            "the cleared review points and tables 10 to 18 are still to come in. Cess is left out of this view when nil.</p></div>")
+    body = (top + "<div class=g12><div class=\"card s9\"><div class=h>GSTR-9 draft, every line with its source</div><table><thead><tr><th>Table</th><th>Line</th>"
+            "<th class=n>Taxable value</th><th class=n>IGST</th><th class=n>CGST</th><th class=n>SGST</th><th>Source</th><th></th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>{side}</div>")
+    return ff_ui.shell(folder.name + " GST", body, "/gst", msg)
+
+
 def page_client(folder, g, fy, check="", msg=""):
     st = work.status(folder, g, fy)
     mon = portal.months(fy)
@@ -126,7 +165,7 @@ i.addEventListener('change',async()=>{const out=[];let u='';try{u=localStorage.g
 for(const f of i.files){m.textContent='Reading '+f.name+'...';try{const r=await fetch('/gst/upload?t=%s&c=%s&g=%s&fy=%s&user='+encodeURIComponent(u),{method:'POST',body:f});
 const j=await r.json();out.push(f.name+': '+(j.error||(j.label+' '+j.month+', '+j.state)))}catch(e){out.push(f.name+': could not be sent')}}
 location='%s&msg='+encodeURIComponent(out.join('\\n'))})})();</script>""" % (TOKEN, quote(folder.name), g, fy, _link(folder, g, fy))
-    body = (ff_ui.head(f"<a href=\"/gst?fy={fy}\">GST annual returns</a> / {g} / FY {fy}", folder.name)
+    body = (ff_ui.head(f"<a href=\"/gst?fy={fy}\">GST annual returns</a> / {g} / FY {fy}", folder.name) + _tabs(folder, g, fy, "")
             + files + chk + (_detail(folder, g, fy, k) if k else "") + script)
     return ff_ui.shell(folder.name + " GST", body, "/gst", msg)
 
@@ -175,6 +214,8 @@ def handle_get(path, q):
             folder, g = _reg(q)
         except ValueError as e:
             return 404, ff_ui.shell("GST", ff_ui.head("GST", "Not found") + f"<p>{esc(e)} <a href=/gst>Back to GST</a></p>", "/gst"), "text/html"
+        if q.get("tab") == "draft":
+            return 200, page_draft(folder, g, fy, msg), "text/html"
         return 200, page_client(folder, g, fy, q.get("check", ""), msg), "text/html"
     if path == "/gst/api/clients":   # the extension starts here
         return _j(200, dict(app="Form Filler", fy=fy, token=TOKEN, months=portal.months(fy), next_months=portal.next_months(fy),

@@ -122,6 +122,8 @@ def _g1sum(d):
         if isinstance(s, dict) and s.get("sec_nm"):
             out[s["sec_nm"]] = dict(tax(s, ("ttl_igst", "ttl_cgst", "ttl_sgst", "ttl_cess")), taxable=D(s.get("ttl_tax")),
                                     value=D(s.get("ttl_val")), records=int(s.get("ttl_rec") or 0))
+            if any(k in s for k in ("ttl_expt_amt", "ttl_nilsup_amt", "ttl_ngsup_amt")):   # table 8: no tax, three values
+                out[s["sec_nm"]].update(exempt=D(s.get("ttl_expt_amt")), nil_rated=D(s.get("ttl_nilsup_amt")), non_gst=D(s.get("ttl_ngsup_amt")), split=True)
     return out
 
 

@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from gst import checks, portal, work  # noqa: E402
+from gst import checks, gstr9, portal, work  # noqa: E402
 
 G = "33ABCDE1234F1Z5"
 FY = "2025-26"
@@ -30,7 +30,8 @@ def g3b(p, taxable=1000, c=90, s=90, itc=(50, 50), rcm=0):
 
 def g1s(p, taxable=1000, c=90, s=90, hsn_c=None):
     sec = lambda n, cg: dict(sec_nm=n, ttl_rec=1, ttl_val=taxable + 2 * cg, ttl_tax=taxable, ttl_igst=0, ttl_cgst=cg, ttl_sgst=s, ttl_cess=0)
-    return json.dumps({"data": {"gstin": G, "ret_period": p, "sec_sum": [sec("TTL_LIAB", c), sec("B2B", c), sec("HSN", c if hsn_c is None else hsn_c)]}}).encode()
+    return json.dumps({"data": {"gstin": G, "ret_period": p, "sec_sum": [sec("TTL_LIAB", c), sec("B2B", c), sec("B2B_4A", c), sec("HSN", c if hsn_c is None else hsn_c),
+                                                                         dict(sec_nm="NIL", ttl_rec=0, ttl_expt_amt=10, ttl_nilsup_amt=0, ttl_ngsup_amt=5)]}}).encode()
 
 
 def g2b(p, c=50, s=50, cn=0, docs=()):
@@ -126,6 +127,46 @@ class Checks(unittest.TestCase):
     def test_tolerance_is_one_rupee(self):
         r = self.by(year(gstr3b={"042025": g3b("042025", taxable=1000.9)}))["outward_taxable"]
         self.assertEqual(r["state"], "ok")
+
+
+class Draft(unittest.TestCase):
+    def line(self, d, table):
+        return next(l for l in d["lines"] if l["table"] == table)
+
+    def test_no_draft_until_all_twelve_months_are_in(self):
+        files = [f for f in year() if not (portal.read(f)["kind"] == "gstr3b" and portal.read(f)["period"] == "012026")]
+        d = gstr9.build(FY, data_of(files))
+        self.assertEqual((d["ready"], d["missing"], d["lines"]), (False, [("GSTR-3B", ["Jan 2026"])], []))
+
+    def test_tables_4_to_9(self):
+        over = {p: g3b(p, rcm=5) for p in portal.months(FY)}
+        d = gstr9.build(FY, data_of(year(gstr3b=over)))
+        self.assertEqual(self.line(d, "4B")["amounts"]["taxable"], Decimal(12000))
+        self.assertEqual(self.line(d, "4G")["amounts"], dict(taxable=Decimal(600), igst=0, cgst=Decimal(60), sgst=Decimal(60), cess=0))
+        self.assertEqual(self.line(d, "4N")["amounts"]["taxable"], Decimal(12600))
+        self.assertEqual((self.line(d, "5D")["amounts"]["taxable"], self.line(d, "5F")["amounts"]["taxable"]), (Decimal(120), Decimal(60)))
+        self.assertEqual(d["totals"]["turnover"], Decimal(12180))          # 4N + 5M - 4G
+        self.assertEqual(self.line(d, "6A")["amounts"]["cgst"], Decimal(660))
+        self.assertEqual(self.line(d, "6C")["amounts"]["cgst"], Decimal(60))   # 2B shows no registered RCM, so all of it is unregistered
+        self.assertEqual(self.line(d, "8D")["amounts"]["cgst"], Decimal(0))
+        self.assertEqual((d["totals"]["tax_gap"], d["totals"]["gstr9c"]), (Decimal(0), False))
+        self.assertEqual(self.line(d, "6H")["state"], "needs")
+        self.assertIsNone(self.line(d, "6H")["amounts"])                   # needs input is never a zero
+
+    def test_tax_short_paid_shows_as_a_gap(self):
+        d = gstr9.build(FY, data_of(year(gstr3b={"062025": g3b("062025", c=80)})))
+        self.assertEqual(d["totals"]["tax_gap"], Decimal(10))
+
+    def test_credit_notes_and_downward_amendments(self):
+        def with_notes(p):
+            j = json.loads(g1s(p))
+            mk = lambda n, v: dict(sec_nm=n, ttl_rec=1, ttl_val=0, ttl_tax=v, ttl_igst=0, ttl_cgst=v / 10, ttl_sgst=v / 10, ttl_cess=0)
+            j["data"]["sec_sum"] += [mk("CDNR", -100), mk("B2CSA", -50)]
+            return json.dumps(j).encode()
+        d = gstr9.build(FY, data_of(year(gstr1_summary={"072025": with_notes("072025")})))
+        self.assertEqual((self.line(d, "4I")["amounts"]["taxable"], self.line(d, "4I")["state"]), (Decimal(100), "check"))
+        self.assertEqual(self.line(d, "4L")["amounts"]["taxable"], Decimal(50))
+        self.assertEqual(self.line(d, "4N")["amounts"]["taxable"], Decimal(12000 - 150))
 
 
 class WorkArea(unittest.TestCase):
