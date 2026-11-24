@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 6
+RULES_VERSION = 7
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -464,6 +464,8 @@ QUESTIONS_AOC4 = [
      lambda f, fs: _d(f, "product_desc")),
     ("related_party", "Any transactions with related parties this year?", "Yes / No", lambda f, fs: _d(f, "related_party") or "No"),
     ("ca_cop", "Certificate of practice number of the certifying CA", "number", lambda f, fs: None),
+    ("ca_membership", "Membership number of the certifying professional (leave blank when the form is filed without "
+     "a practising professional's certificate, as for a small company)", "number", lambda f, fs: None),
     ("ca_fellow", "Certifying CA is Associate or Fellow?", "Associate / Fellow", lambda f, fs: None),
     # The portal keeps every section after the auditor's details locked until these two are saved.
     ("adt1_srn", "SRN of Form ADT-1 (the auditor's current appointment)", "SRN, as on the ADT-1 challan. Last year's is suggested: change it if the auditor was appointed again",
@@ -606,9 +608,13 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     d.set("dec_date", a.get("resolution_date"), Q)
     d.set("designation_dec", "Director", LY)
     d.set("dec_directorIdentification", a.get("signing_din") or f.get("signing_din"), Q)
-    d.set("categoryOfProfessional", "Chartered Accountant (in whole-time practice) or", LY)
-    d.set("whetherAssociateOrFellow", a.get("ca_fellow"), Q)
-    d.set("certificateOfPracticeNumber", a.get("ca_cop"), Q)
+    # Certificate by a practising professional: only when staff gave the membership number. Ticking the
+    # category alone makes the portal demand the number, and small companies file without this certificate.
+    if a.get("ca_membership"):
+        d.set("categoryOfProfessional", "Chartered Accountant (in whole-time practice) or", Q)
+        d.set("whetherAssociateOrFellow", a.get("ca_fellow"), Q)
+        d.set("membershipNumber", a.get("ca_membership"), Q)
+        d.set("certificateOfPracticeNumber", a.get("ca_cop"), Q)
     if _yes(a.get("related_party")):
         d.todo.append("Related party transactions: attach AOC-2 on the portal.")
     d.todo.append("Attach: financial statements with auditor's and board's report (PDF), and any optional attachments.")
