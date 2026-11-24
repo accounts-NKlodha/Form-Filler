@@ -279,7 +279,8 @@
     const sent = await server('/log', log);
     // Plans with autoSave (ADT-1): keep going section by section and page by page until a round makes no progress.
     // Progress = something typed, or fewer fields still waiting below a Save (a section that already held its values).
-    const leftNow = count['next-section'] || 0;
+    // Fields still to come: below an unclicked Save, or still locked by the portal until the Save above is in.
+    const leftNow = (count['next-section'] || 0) + ((res.save && res.save.locked) || 0);
     const idleNow = (count.filled || (left >= 0 && leftNow < left)) ? 0 : idle + 1;
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
     if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 40 && idleNow < 2 && !stopLoop) {
