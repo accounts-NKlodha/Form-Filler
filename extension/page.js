@@ -36,6 +36,7 @@
   // Checkbox options can also be "<base>_<n>_widget".
   const baseOfWidget = id => id.replace(/([-_]\d+)?_widget$/, '');
   let abort = false;
+  const tablesDone = new Set();  // tables seen complete in this page load
   let fieldMap = {};
 
   function typeOf(cls) {
@@ -711,6 +712,9 @@
       const cells = t.rows.flat();
       const manual = msg => { for (const c of cells) log.push({ code: c.code, key: c.key, label: `${t.title} row ${c.row + 1}: ${c.label}`, value: c.display ?? c.value, status: 'manual', msg }); };
       if (abort) { manual('stopped by user'); return; }
+      // A table that already held every value earlier in this run is not walked again each round.
+      if (t.groupSom && tablesDone.has(t.groupSom)) { for (const c of cells) log.push({ code: c.code, key: c.key, label: `${t.title} row ${c.row + 1}: ${c.label}`, status: 'unchanged', msg: 'checked earlier in this run' }); return; }
+      const logFrom = log.length;
       if (!g || !t.groupSom) { manual('repeatable table: fill by hand (no form model)'); return; }
       const grp = safe(() => g.resolveNode(t.groupSom));
       const gid = (grp && safe(() => grp.id, '')) || '';
@@ -768,6 +772,8 @@
           done++;
         }
       }
+      const mine = log.slice(logFrom);
+      if (!abort && mine.length === cells.length && mine.every(e => e.status === 'unchanged')) tablesDone.add(t.groupSom);
         }
     for (const t of [...tablesLeft]) await doTableFn(t);
 
