@@ -61,8 +61,18 @@ def checklist(folder):
                     "Until it is here, the form is filled and saved up to the last page only",
                     "must", sorted(p for p in sd.glob("*.pdf") if p.is_file()) + old, multi=True)
                 continue
+            if el == "mgt7a_shareholders":
+                add(f"att_{el}", f"{app.FORM_LABEL.get(s, s)}: List of shareholders (MCA Excel)",
+                    "Same as last year when shareholders did not change: taken from last year's filed MGT-7A. Upload a new file to replace it",
+                    "useful", [have.get(el)], accept=".xlsm,.xlsx")
+                continue
             add(f"att_{el}", f"{app.FORM_LABEL.get(s, s)}: {title}", "Uploaded to MCA by the filing queue",
                 "must" if must else "useful", [have.get(el)], accept=".pdf,.jpg,.jpeg,.png")
+        xl = filing_queue.excel_files(folder, s)
+        for kind, _, _, _, title in filing_queue.XL.get(s, []):
+            add(f"att_{kind}", f"{app.FORM_LABEL.get(s, s)}: {title}",
+                "Prepared by the app from the meeting dates on Inputs for the forms. Upload your own file to replace it",
+                "useful", [xl.get(kind)], accept=".xlsm,.xlsx")
     # last year
     add("ly_aoc4", "Last year's filed AOC-4 (PDF from MCA)",
         "Last year's figures are tied out against it; signatories and auditor carry forward; the local AI reads it",

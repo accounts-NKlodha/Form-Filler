@@ -78,6 +78,11 @@ def excel_files(folder, slug):
     import re
     d, out = Path(folder) / "attachments", {}
     for kind, _, pat, _, _ in XL.get(slug, []):
+        mine = Path(folder) / ATTACH_DIR / kind  # a file staff uploaded wins over the one the app prepared
+        up = sorted(p for p in mine.glob("*.xls*") if not p.name.startswith("~$")) if mine.exists() else []
+        if up:
+            out[kind] = up[-1]
+            continue
         hits = sorted(p for p in d.glob("*.xls*") if re.search(pat, p.name, re.I) and not p.name.startswith("~$")) if d.exists() else []
         if hits:
             out[kind] = hits[-1]
@@ -124,6 +129,17 @@ def pending(folder, slug):
 
 def store_attachment(folder, el, filename, data):
     slot = next(((s, a) for s, rows in ATTACH.items() for a in rows if a[0] == el), None)
+    xl = next((x for rows in XL.values() for x in rows if x[0] == el), None)
+    if xl or el == "mgt7a_shareholders":  # MCA Excel formats: kept under the name staff gave, older copy moved aside
+        if Path(filename).suffix.lower() not in (".xlsm", ".xlsx"):
+            raise ValueError("attach the MCA Excel file (.xlsm)")
+        d = Path(folder) / ATTACH_DIR / el
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob("*"):
+            app._move_aside(folder, old)
+        dest = d / filename
+        dest.write_bytes(data)
+        return dest
     if not slot:
         raise ValueError("unknown attachment")
     d = Path(folder) / ATTACH_DIR / el

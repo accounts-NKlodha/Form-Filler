@@ -648,6 +648,10 @@ SRC_WORD = {"tally": "Tally", "lastyear": "Last year's form", "staff": "Typed by
 
 def _signed_box(folder):
     import ff_signed
+    try:  # attachments for MCA: signed set, meeting Excel files, shareholder list, photo (ff_signed.box)
+        return ff_signed.box(folder, sys.modules[__name__])
+    except Exception:  # noqa: BLE001
+        pass
     st = ff_signed.state(folder)
     path, note = None, ""
     try:
