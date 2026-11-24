@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 7
+RULES_VERSION = 8
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -541,8 +541,14 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     if not (srn or f.get("adt1_srn")):
         d.todo.append("Answer \"SRN of Form ADT-1\" on Inputs for the forms: the sections after the auditor's details stay locked "
                       "on the portal until it is saved.")
-    cat = (f.get("auditor") or {}).get("category")
+    # The auditor's details are a repeatable block (one per auditor): the portal fills PAN, name and address from
+    # the ADT-1; category and the signing member are typed. Same auditor as last year unless staff change it.
+    aud = f.get("auditor") or {}
+    cat = aud.get("category")
     d.set("categoryOfAuditor", cat, LY)
+    row = {"categoryOfAuditor": cat, "nameOfMember": aud.get("member_name"), "membershipNumber_Auditor": aud.get("member_no")}
+    if any(row.values()):
+        d.tables["auditors"] = [row]
     if f.get("industry"):
         d.set("InsuranceOrNBFC", f["industry"], LY)
     d.set("whetherSchedule3", f.get("sch3_applicable") or "Yes", LY)

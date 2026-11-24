@@ -239,6 +239,10 @@ def read_aoc4(path):
         "area": after(r"^\*Area/Locality$"), "city": after(r"^\*City$"),
         "district": after(r"^\*District$"), "state": after(r"^\*State/UT$"),
     }
+    # (f) Member signing for the firm. A blank box prints the next label instead, so keep only real answers.
+    mn, mno = after(r"^\(i\) Name of the member$"), after(r"^\(ii\) Membership number$")
+    f["auditor"]["member_name"] = mn if mn and not mn.startswith("(") else None
+    f["auditor"]["member_no"] = mno if mno and re.fullmatch(r"\d{4,7}", mno) else None
     f["industry"] = after(r"10 \(a\) \*Type of Industry")
     f["sch3_applicable"] = radio("Schedule III")
     f["consolidated"] = radio("consolidated financial statements")
