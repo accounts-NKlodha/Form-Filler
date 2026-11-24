@@ -297,7 +297,7 @@
     // Field names and statuses only: client values never go into the log.
     const log = {
       client: plan.client, slug: plan.slug, workbook: plan.workbook, url: location.origin + location.pathname,
-      startedAt: roundStart, round, finishedAt: new Date().toISOString(), counts: count, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
+      startedAt: roundStart, round, finishedAt: new Date().toISOString(), counts: count, timing: res.timing || null, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
       entries: res.log.map(({ value, ...rest }) => rest),
     };
     const sent = await server('/log', log);

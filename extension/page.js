@@ -749,6 +749,7 @@
       }
     };
 
+    const tFill0 = Date.now();
     for (const f of plan.fields) {
       if (abort) { log.push({ code: f.code, key: f.key, label: f.label, status: 'not-run', msg: 'stopped by user' }); continue; }
       if (beyond(elOf(f))) { passedStop = true; log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'next-section', msg: 'below the Save to click first' }); done++; await runSectionTables(f); continue; }
@@ -900,6 +901,7 @@
     }
 
     // Point staff at the Save to press: the first Save below the last field filled on this page.
+    const tFill1 = Date.now();
     let save = { clicked: false, msg: '' };
     if (abort) save.msg = 'stopped by user';
     else {
@@ -936,8 +938,11 @@
           save.more = log.some(e => e.status === 'next-section');
           // Fields still locked below the Save just pressed: the portal opens them once that Save is in.
           // Look again in the next round; if the same number is still locked then, the page needs staff.
-          if (locked && locked !== lastLocked) save.more = true;
-          lastLocked = locked;
+          // Only fields BELOW the Save just pressed can still open: a locked field above it (one the portal fills
+          // itself, such as the e-mail ID) has had its Save already and must not cost another full pass.
+          const lockedBelow = lockedEls.filter(el => before(btn, el)).length;
+          if (lockedBelow && lockedBelow !== lastLocked) save.more = true;
+          lastLocked = lockedBelow;
           // A field hidden by an earlier answer may open once that answer is saved: give it one more round.
           const seen = (window.__mcaHiddenSeen = window.__mcaHiddenSeen || new Set());
           const fresh = log.filter(e => e.status === 'hidden' && !seen.has(e.key + '|' + e.label));
@@ -984,7 +989,7 @@
     }
     for (const e of log) { delete e.retry; delete e.el; }
     progress({ done: total, total, label: 'done', section: '' });
-    return { log, save };
+    return { log, save, timing: { fillMs: tFill1 - tFill0, saveMs: Date.now() - tFill1 } };
   }
 
   // ---------- wiring ----------
