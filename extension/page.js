@@ -27,7 +27,7 @@
   const GENERIC = /^(text ?box|text ?area|numeric ?box|date ?picker|drop ?down( ?list)?|radio ?button|check ?box|switch|field|untitled)\s*\d*$/i;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const jitter = (a, b) => sleep(a + Math.random() * (b - a));
-  const strip = s => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+  const strip = s => String(s ?? '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/(?:[#.@][\w-]+(?:::?[\w-]+)*\s*,?\s*)+\{[^{}]*\}/g, ' ').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   const gb = () => (window.guideBridge && typeof window.guideBridge.visit === 'function') ? window.guideBridge : null;
   const safe = (fn, dflt = null) => { try { return fn(); } catch (e) { return dflt; } };

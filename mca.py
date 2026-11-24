@@ -103,7 +103,18 @@ def load_dump(slug):
     p = DUMPS / f"{slug}.json"
     if not p.exists():
         raise FileNotFoundError(f"no dump for {form_name(slug)} yet: open the form on MCA and press Alt+Shift+D")
-    return json.loads(p.read_text(encoding="utf-8"))
+    d = json.loads(p.read_text(encoding="utf-8"))
+    for f in d.get("fields") or []:  # the portal keeps a <style> block inside some labels: drop its CSS text
+        if isinstance(f.get("label"), str) and "{" in f["label"]:
+            f["label"] = clean_label(f["label"])
+    return d
+
+
+_CSS = re.compile(r"(?:[#.@][\w-]+(?:::?[\w-]+(?:\([^)]*\))?)*\s*(?:,\s*)?)+\{[^{}]*\}")
+
+
+def clean_label(label):
+    return re.sub(r"\s{2,}", " ", _CSS.sub(" ", label)).strip()
 
 
 def section_text(f):
