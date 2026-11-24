@@ -235,6 +235,10 @@ def form_html(folder, slug, ui):
 def render(folder, ui):
     if not app.inputs_path(folder).exists():
         return "<p class=mut>The form values are prepared after Get data. Nothing to preview yet.</p>"
+    try:
+        app.refresh_questions(folder)  # rules changed since the values were prepared: rebuild first, saved answers are kept
+    except Exception:  # noqa: BLE001
+        pass
     forms = [s for s in (app.load(folder).get("forms") or []) if s in app.SMART]
     legend = "".join(f"<span><i style=\"background:{c}\"></i>{w}</span>" for w, c in SRC.values())
     out = [CSS, "<div class=h>What will be typed on MCA, laid out as on the form</div>"

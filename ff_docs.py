@@ -69,7 +69,7 @@ def checklist(folder):
         "must" if "aoc4" in forms else "useful", [lastyear.find_last_aoc4(folder)])
     add("ly_mgt7", "Last year's filed MGT-7 / MGT-7A (PDF from MCA)",
         "Shareholding, directors and meetings carry forward; the local AI reads it",
-        "must" if "mgt7a" in forms else "useful", [lastyear.find_last_mgt7a(folder)] + _root_pdfs(folder, r"mgt[-_ ]?7(?!a)"))
+        "must" if "mgt7a" in forms else "useful", list(dict.fromkeys([lastyear.find_last_mgt7a(folder)] + _root_pdfs(folder, r"mgt[-_ ]?7(?!a)"))))
     add("ly_board", "Last year's Board's report (PDF)", "The local AI reads it for dates, meetings and directors",
         "useful", _root_pdfs(folder, r"board"), multi=True)
     add("ly_auditor", "Last year's Auditor's report and CARO (PDF)", "The local AI reads it for the auditor's details",

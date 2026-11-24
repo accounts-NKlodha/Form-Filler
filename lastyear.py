@@ -178,9 +178,24 @@ def read_mgt7a(path):
     return f
 
 
+def _is_mgt7a(path):
+    """True when the PDF's first page says it is Form MGT-7A (the file name alone does not always say so)."""
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            text = (pdf.pages[0].extract_text() or "")[:1500] if pdf.pages else ""
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(re.search(r"form\s*no\.?\s*mgt\s*-?\s*7a", text, re.I))
+
+
 def find_last_mgt7a(folder):
-    for p in sorted(Path(folder).rglob("*.pdf")):
+    pdfs = [p for p in sorted(Path(folder).rglob("*.pdf")) if not {"_replaced", "mca_attachments", "signed", "reports"} & set(p.parts)]
+    for p in pdfs:
         if re.search(r"mgt[-_ ]?7a", p.name, re.I):
+            return p
+    # MCA's own download names look like "MGT-71-AC1234567-XXXX.pdf" (form MGT-7, then the SRN): read the first page to tell
+    for p in pdfs:
+        if re.search(r"mgt[-_ ]?7", p.name, re.I) and _is_mgt7a(p):
             return p
     return None
 
