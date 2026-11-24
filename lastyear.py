@@ -80,6 +80,10 @@ def read_mgt7a(path):
     f["incorporation"] = m.group(1) if m else None
     nxt, _ = _after(lines, r"Website")
     f["website"] = None if not nxt or nxt[0].lower().startswith(("iv", "*date")) else nxt[0]
+    # registered office co-ordinates: "Latitude details <as on filing date> <as on year end>"
+    for key in ("latitude", "longitude"):
+        m = re.search(key + r" details\s+(-?\d{1,3}\.\d+)(?:\s+(-?\d{1,3}\.\d+))?", text, re.I)
+        f[key] = [m.group(1), m.group(2) or m.group(1)] if m else None
 
     # II business activities: "1 G 47 100" (S.No, group code, activity code, % turnover)
     f["activities"] = [{"group": g, "code": c, "pct": p} for _, g, c, p in

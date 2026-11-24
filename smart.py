@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 9
+RULES_VERSION = 10
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -294,6 +294,12 @@ def derive(facts, answers, fs):
     # Name, address, lat/long "as on FY end": same as the portal's own "as on filing date" values.
     # Name / address / lat-long "as on FY end" are kept by the portal itself: never touch them.
     d.set("TelephoneNumber", a.get("phone"), Q)
+    for key in ("latitude", "longitude"):  # registered office co-ordinates: same office, so same as last year
+        pair = f.get(key) or []
+        for n, v in zip((1, 2), pair):
+            d.set(f"{key}_details{n}", v, LY)
+    if not f.get("latitude") or not f.get("longitude"):
+        d.todo.append("Latitude and longitude of the registered office: not on last year's MGT-7A, type them on the portal.")
     cls = f.get("class") or ""
     d.set("ClassOfCompany1", "One Person Company" if "one person" in cls.lower() else ("Private company" if cls else None), LY)
     d.set("CategoryCompany", f.get("category"), LY)
