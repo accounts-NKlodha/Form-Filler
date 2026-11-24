@@ -79,60 +79,69 @@ def fy_label(folder=None):
 # ---------------------------------------------------------------- shell
 
 CSS = """
-:root{--bg:oklch(0.985 0.004 95);--fg:oklch(0.235 0.014 260);--surface:oklch(0.972 0.005 95);--card:oklch(1 0 0);
---primary:oklch(0.285 0.038 258);--on-primary:oklch(0.985 0.004 95);--muted:oklch(0.957 0.005 95);--mfg:oklch(0.47 0.014 258);
---brass:oklch(0.62 0.086 76);--bad:oklch(0.52 0.176 27);--good:oklch(0.45 0.088 158);--info:oklch(0.47 0.07 245);
---border:oklch(0.905 0.006 95);--strong:oklch(0.80 0.008 95);--ring:oklch(0.62 0.086 76);
---side:oklch(0.256 0.024 258);--side-fg:oklch(0.87 0.01 95);--side-on:oklch(0.31 0.026 258);--side-line:oklch(0.34 0.022 258)}
+:root{--bg:oklch(0.975 0.008 85);--fg:oklch(0.2 0.02 160);--surface:oklch(0.95 0.01 85);--card:oklch(0.993 0.004 85);
+--primary:oklch(0.4 0.08 160);--on-primary:oklch(0.98 0.01 120);--muted:oklch(0.94 0.012 85);--mfg:oklch(0.47 0.02 150);
+--brass:oklch(0.55 0.1 160);--bad:oklch(0.5 0.17 28);--good:oklch(0.45 0.1 155);--info:oklch(0.48 0.1 240);--warn:oklch(0.48 0.11 70);
+--bad-soft:oklch(0.95 0.035 28);--good-soft:oklch(0.94 0.04 155);--info-soft:oklch(0.95 0.025 240);--warn-soft:oklch(0.95 0.05 85);
+--bad-line:oklch(0.87 0.06 28);--good-line:oklch(0.86 0.06 155);--warn-line:oklch(0.86 0.08 85);
+--border:oklch(0.89 0.012 85);--strong:oklch(0.86 0.015 85);--ring:oklch(0.55 0.1 160);
+--side:oklch(0.94 0.012 85);--side-fg:oklch(0.28 0.02 160);--side-on:oklch(0.9 0.014 85);--side-line:oklch(0.89 0.012 85);
+--serif:"Source Serif 4",Georgia,serif}
 *{box-sizing:border-box}
 body{margin:0;font:14px/20px "IBM Plex Sans",system-ui,sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--primary)}:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .num,td.n,th.n{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-aside{position:fixed;inset:0 auto 0 0;width:240px;background:var(--side);color:var(--side-fg);padding:24px 12px;display:flex;flex-direction:column;gap:4px;z-index:5}
-.brand{color:#fff;font-weight:600;font-size:16px;line-height:22px;padding:0 12px 24px;text-decoration:none;display:block}
-.brand small{display:block;font-weight:400;font-size:13px;color:var(--side-fg);opacity:.8}
-aside a.nv{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:6px;color:var(--side-fg);text-decoration:none}
-aside a.nv:hover{background:var(--side-on)}aside a.on{background:#fff;color:var(--fg);font-weight:500}
-aside a.nv .k{width:20px;height:20px;border-radius:10px;border:1px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;opacity:.85}
-aside .gap{height:24px}
-aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 12px 0;font-size:13px;line-height:18px}
-aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}aside .more a.on{opacity:1;font-weight:600;color:#fff;background:none}
-aside .who{display:flex;flex-direction:column;gap:4px;padding:12px;border-top:1px solid var(--side-line);margin-top:12px;font-size:13px}
-aside .who input{height:32px;border-radius:6px;border:1px solid var(--side-line);background:var(--side-on);color:#fff;padding:0 8px;font:inherit}
-main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
+aside{position:fixed;inset:0 auto 0 0;width:248px;background:var(--side);color:var(--side-fg);border-right:1px solid var(--side-line);padding:20px 14px 16px;display:flex;flex-direction:column;gap:4px;z-index:5;overflow-y:auto}
+.brand{color:var(--fg);font-family:var(--serif);font-weight:600;font-size:19px;line-height:24px;padding:0 6px 14px;text-decoration:none;display:block}
+.brand small{display:block;font-family:"IBM Plex Sans",system-ui,sans-serif;font-weight:400;font-size:13px;color:var(--mfg)}
+aside .who{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--side-line);border-radius:6px;background:var(--card);font-size:13px;font-weight:500;margin-bottom:14px}
+aside .who input{height:34px;border-radius:5px;border:1px solid var(--strong);background:var(--bg);color:var(--fg);padding:0 10px;font:inherit;font-weight:400;width:100%}
+aside .who small{font-weight:400;color:var(--mfg);font-size:13px;line-height:17px}
+aside .grp{font-size:13px;font-weight:500;color:var(--mfg);padding:6px 6px 4px}
+aside a.nv{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:6px;color:var(--side-fg);text-decoration:none;font-weight:500}
+aside a.nv:hover{background:var(--side-on)}aside a.on,aside a.on:hover{background:var(--primary);color:var(--on-primary)}
+aside a.nv .k{width:20px;height:20px;border-radius:4px;background:var(--side-on);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;font-variant-numeric:tabular-nums}
+aside a.on .k{background:oklch(1 0 0 / .18)}aside a.nv .k.none{background:none}
+aside a.nv .nm{display:flex;flex-direction:column}aside a.nv small{font-weight:400;font-size:13px;line-height:18px;color:var(--mfg)}
+aside a.nv small.at{color:var(--bad)}aside a.on small,aside a.on small.at{color:var(--on-primary);opacity:.85}
+aside .gap{height:1px;background:var(--side-line);margin:12px 0 8px}
+aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 6px 0;font-size:13px;line-height:18px}
+aside .more a{color:var(--mfg);display:block;padding:4px 0;text-decoration:none}aside .more a:hover{color:var(--fg);text-decoration:underline}aside .more a.on{font-weight:600;color:var(--fg);background:none}
+main{margin-left:248px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
-.crumb{font-size:13px;color:var(--mfg)}h1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.01em;margin:2px 0 0}
+.crumb{font-size:13px;color:var(--mfg)}h1{font-family:var(--serif);font-size:27px;line-height:34px;font-weight:600;letter-spacing:-.005em;margin:2px 0 0}
 .acts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 .g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:24px;align-items:start}
 .s8{grid-column:span 8}.s4{grid-column:span 4}.s7{grid-column:span 7}.s5{grid-column:span 5}.s9{grid-column:span 9}.s3{grid-column:span 3}.s12{grid-column:span 12}
 @media (max-width:1100px){.g12>*{grid-column:span 12!important}main{padding:24px 16px;margin-left:0}aside{position:static;width:auto}}
 .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:24px}
 .h{font-size:14px;font-weight:500;color:var(--mfg);margin:0 0 12px}
-table{width:100%;border-collapse:collapse}th{font-weight:500;color:var(--mfg);font-size:13px;text-align:left;padding:0 8px 8px}
+table{width:100%;border-collapse:collapse}th{font-weight:600;color:var(--side-fg);font-size:13px;text-align:left;padding:0 8px 8px}
 td{border-top:1px solid var(--border);padding:8px;vertical-align:top}tr.sel td{background:var(--muted)}
 tr.click{cursor:pointer}tr.click:hover td{background:var(--surface)}
 .tag{display:inline-block;font-size:13px;line-height:18px;border:1px solid var(--strong);border-radius:4px;padding:1px 8px;white-space:nowrap;background:var(--card)}
-.need{border-color:var(--fg);font-weight:600}.good{border-color:var(--good);color:var(--good)}.badt{border-color:var(--bad);color:var(--bad);font-weight:600}
-.work{border-color:var(--info);color:var(--info)}
+.tag{border-radius:999px;border-color:var(--border);background:var(--muted);color:var(--mfg)}.need{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn);font-weight:600}.good{border-color:var(--good-line);background:var(--good-soft);color:var(--good);font-weight:500}.badt{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad);font-weight:600}
+.work{border-color:oklch(0.86 0.04 240);background:var(--info-soft);color:var(--info);font-weight:500}
 .mut{color:var(--mfg);font-size:13px}.err{color:var(--bad)}.ok{color:var(--good)}
-.btn,button{font:inherit;font-size:15px;height:40px;padding:0 18px;border:1px solid var(--fg);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn,button{font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 16px;border:1px solid var(--strong);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
 .btn:hover,button:hover{background:var(--muted)}button:disabled{opacity:.45;cursor:not-allowed}
-.p{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}.p:hover{background:oklch(0.33 0.04 258)}
+.p{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}.p:hover{background:color-mix(in oklab,var(--primary) 88%,black)}.p:disabled{background:var(--strong);border-color:var(--strong);color:var(--mfg);opacity:1}
 .sm{height:32px;font-size:13px;padding:0 12px}.link{border:0;background:none;height:auto;padding:0;color:var(--primary);text-decoration:underline;font-size:13px}
 input[type=text],select,textarea{font:inherit;height:36px;padding:0 10px;border:1px solid var(--strong);border-radius:6px;background:var(--card);color:var(--fg);min-width:0}
 textarea{height:auto;padding:8px 10px}input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary)}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mfg)}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-.steps{display:flex;gap:24px}.steps>div{flex:1;border-top:2px solid var(--strong);padding-top:12px}.steps>div.d{border-color:var(--primary)}
+.steps{display:flex;gap:10px}.steps>div{flex:1;border:1px solid var(--warn-line);background:var(--warn-soft);border-radius:6px;padding:10px 14px;min-width:0}.steps>div.d{border-color:var(--good-line);background:var(--good-soft)}.steps>div.d .mut{color:var(--good)}.steps>div:not(.d) .mut{color:var(--warn)}
 .steps b{display:block;margin-bottom:2px}
 .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.filters a{text-decoration:none;color:var(--fg)}
-.tabs{display:flex;gap:28px;border-bottom:1px solid var(--border);flex-wrap:wrap}.tabs a{padding:10px 0;color:var(--mfg);text-decoration:none}
-.tabs a.on{color:var(--fg);font-weight:500;border-bottom:2px solid var(--fg)}
-.msg{border:1px solid var(--brass);background:oklch(0.62 0.086 76 / .08);border-radius:8px;padding:12px 16px;white-space:pre-wrap}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding-bottom:12px}.tabs a{padding:6px 12px;border-radius:6px;color:var(--side-fg);text-decoration:none}
+.tabs a:hover{background:var(--muted)}.tabs a.on,.tabs a.on:hover{background:var(--primary);color:var(--on-primary);font-weight:600}
+.msg{border:1px solid var(--good-line);background:var(--good-soft);border-radius:6px;padding:10px 16px;white-space:pre-wrap}
 .chain{border-left:2px solid var(--primary);padding:0 0 16px 16px}.chain:last-child{padding-bottom:0}.chain.off{border-color:var(--strong)}
 .chain b{display:block}.ledgers{margin:6px 0 0;padding:0;list-style:none;font-size:13px}.ledgers li{display:flex;justify-content:space-between;gap:12px;border-top:1px dashed var(--border);padding:3px 0}
 .pt{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding:10px 0}.pt:first-of-type{border-top:0}
 .pt.done{flex-direction:row;justify-content:space-between;align-items:flex-start;gap:12px}
+.ptsec.fix>.pt,.ptsec.read>.pt{border:1px solid var(--bad-line);background:var(--bad-soft);border-radius:6px;padding:12px;margin-top:10px}.ptsec.read>.pt{border-color:var(--warn-line);background:var(--warn-soft)}.ptsec.fix>.ptt,.ptsec.fix .ptn{color:var(--bad)}.ptsec.read>.ptt,.ptsec.read .ptn{color:var(--warn)}.ptsec .ptn{border:0;width:auto;height:auto;font-weight:600;font-variant-numeric:tabular-nums;line-height:20px}.ptsec .ptn::after{content:"."}
 .ptsec{margin-top:16px}.ptsec:first-of-type{margin-top:4px}.ptt{font-weight:600;font-size:14px}.ptsec>summary{font-weight:600;font-size:14px;color:var(--fg)}
 .pth{display:flex;gap:8px;align-items:flex-start}.ptn{flex:none;width:22px;height:22px;border-radius:11px;border:1px solid var(--strong);font-size:13px;display:inline-flex;align-items:center;justify-content:center}
 .wait{background:var(--muted);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--mfg)}a.btn.sm{display:inline-flex;align-items:center;text-decoration:none}
@@ -178,7 +187,7 @@ SCRIPT = """<script>
 (()=>{const k='ff_user';const box=document.getElementById('who');let v='';try{v=localStorage.getItem(k)||''}catch(e){}
 if(box){box.value=v;box.addEventListener('change',()=>{try{localStorage.setItem(k,box.value.trim())}catch(e){}})}
 for(const f of document.querySelectorAll('form'))f.addEventListener('submit',e=>{let u=(box&&box.value.trim())||'';
- if(f.dataset.who==='need'&&!u){e.preventDefault();alert('Type your name at the bottom left first: this step is recorded against a person.');box&&box.focus();return}
+ if(f.dataset.who==='need'&&!u){e.preventDefault();alert('Type your name at the top left first: this step is recorded against a person.');box&&box.focus();return}
  let h=f.querySelector('input[name=user]');if(!h){h=document.createElement('input');h.type='hidden';h.name='user';f.appendChild(h)}h.value=u;
  const b=f.querySelector('button[data-busy]');if(b){b.disabled=true;b.textContent=b.dataset.busy}});
 for(const t of document.querySelectorAll('[data-all]'))t.addEventListener('change',()=>{for(const c of document.querySelectorAll('input[name='+t.dataset.all+']'))c.checked=t.checked});
@@ -187,28 +196,72 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
  if(busy)setTimeout(tick,2000);else location.reload()};setTimeout(tick,+r*1000)}
 })();</script>"""
 
-NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
+NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"), ("/gst", "4", "GST annual return"),
        None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), ("/partner", "", "Partner review")]
 MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
+def _has_gst():
+    try:
+        import ff_gst  # noqa: F401  (the GST annual returns screen, where it is installed)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def nav_counts():
+    """Small counts under the menu items: {href: (text, needs a person)}. Never stops a page from showing."""
+    out = {}
+    try:
+        jobs = ff_jobs.load()["jobs"]
+        failed = sum(1 for j in jobs if j["status"] == "failed")
+        stopped = sum(1 for j in jobs if j["status"] in ("failed", "staff"))
+        try:
+            stopped += sum(1 for j in filing_queue.load()["jobs"] if j.get("status") == "held")
+        except Exception:  # noqa: BLE001
+            pass
+        review = ready = 0
+        for d in clients():
+            if app.load(d).get("verified"):  # the saved tick: cheap enough to count on every page
+                ready += 1
+            elif (d / ff_fin.out_name(d)).exists():
+                review += 1
+        if failed:
+            out["/data"] = (f"{failed} failed", True)
+        if review:
+            out["/review"] = (f"{review} to review", False)
+        if ready:
+            out["/file"] = (f"{ready} verified", False)
+        if stopped:
+            out["/agents"] = (f"{stopped} stopped", True)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def shell(title, body, active="", msg="", refresh=0):
-    nav = []
+    nav = ["<div class=grp>Steps</div>"]
+    counts = nav_counts()
+    gst = _has_gst()
     for item in NAV:
         if item is None:
-            nav.append("<div class=gap></div>")
+            nav.append("<div class=gap></div><div class=grp>Tools and records</div>")
             continue
         href, k, name = item
+        if href == "/gst" and not gst:
+            continue
+        hint, alert = counts.get(href, ("", False))
+        sub = f"<small{' class=at' if alert else ''}>{esc(hint)}</small>" if hint else ""
         nav.append(f"<a class=\"nv{' on' if href == active else ''}\" href=\"{href}\">"
-                   f"{f'<span class=k>{k}</span>' if k else '<span class=k style=border:0></span>'}{name}</a>")
+                   f"<span class=\"k{'' if k else ' none'}\">{k}</span><span class=nm>{name}{sub}</span></a>")
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>{esc(title)} · Form Filler</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap">
 <style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
-<aside><a class=brand href="/data">MCA automation<small>Form Filler · N K Lodha &amp; Co</small></a>
+<aside><a class=brand href="/data">Form Filler<small>N K Lodha &amp; Co{' · ' + esc(fy_label()) if fy_label() else ''}</small></a>
+<label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Type your name"><small>Recorded on every approval and override.</small></label>
 {''.join(nav)}
-<div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div>
-<label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Recorded on approvals"></label></aside>
+<div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div></aside>
 <main>{f'<div class=msg role=status>{esc(msg)}</div>' if msg else ''}{body}</main>{SCRIPT}</body></html>"""
 
 
@@ -419,7 +472,7 @@ def page_review(name="", tab="", msg=""):
             return ""
         rows_ = "".join(f"<div class=pt><div class=pth><span class=ptn>{start + k}</span><b>{esc(p['text'])}</b></div>{det}<div>{act}</div></div>"
                         for k, (p, det, act) in enumerate(items))
-        return f"<div class=ptsec><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
+        return f"<div class=\"ptsec {'fix' if title.startswith('Fix') else 'read'}\"><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
     pts_html = [
         ("<div class=wait style=\"margin-bottom:12px\"><b>The figures are being rebuilt.</b> These points will refresh when it finishes; the tick is off until then.</div>" if busy else ""),
         _sec("Fix first", "These change the figures or the forms. Work from the top: a later point often clears itself once an earlier one is fixed.", fix, 1),
