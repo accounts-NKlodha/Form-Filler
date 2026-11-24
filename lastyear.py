@@ -305,7 +305,9 @@ def read_aoc4_figures(path):
     for l in lines[start:]:
         if re.match(r"^Page \d+ of \d+$", l):
             continue
-        m = re.match(rf"^(.*?)\s*({_NUM})\s+({_NUM})$", l)
+        # Rows the filer changed carry a third figure (the "reason for change" column): current, previous, reason.
+        m = re.match(rf"^(.*?[A-Za-z)].*?)\s+({_NUM})\s+({_NUM})\s+{_NUM}$", l) or \
+            re.match(rf"^(.*?)\s*({_NUM})\s+({_NUM})$", l)
         if m and re.search(r"[A-Za-z]", m.group(1) or ""):
             rows.append((m.group(1), _fig(m.group(2))))
             pending = ""
