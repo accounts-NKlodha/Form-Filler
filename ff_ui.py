@@ -187,7 +187,7 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
 })();</script>"""
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
-       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail")]
+       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), None, ("/gst", "", "GST annual returns")]
 MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
@@ -1011,6 +1011,9 @@ def handle_get(path, query):
     """(status, body, content type) or None."""
     q = {k: v[0] for k, v in query.items()}
     msg = q.get("msg", "")
+    if path == "/gst" or path.startswith("/gst/"):  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_get(path, q)
     if path in ("/", "/data"):
         return 200, page_data(msg), "text/html"
     if path == "/review":
@@ -1046,6 +1049,9 @@ def handle_get(path, query):
 
 def handle_post(path, query, body, form):
     """(status, body, content type, location or None) or None."""
+    if path.startswith("/gst/"):  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_post(path, {k: v[0] for k, v in query.items()}, body, form)
     if not path.startswith("/ff/"):
         return None
     q = {k: v[0] for k, v in query.items()}
