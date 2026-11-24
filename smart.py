@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 10
+RULES_VERSION = 11
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -26,6 +26,8 @@ QUESTIONS = [
     ("all_attended", "Did every director attend every board meeting and the AGM?", "Yes / No", lambda f, fs: "Yes"),
     ("capital_changed", "Any change in share capital during the year (allotment, buy-back, transfer)?", "Yes / No", lambda f, fs: "No"),
     ("holders_changed", "Any change in shareholders or their shareholding during the year?", "Yes / No", lambda f, fs: "No"),
+    ("holders_all_indian", "Are all shareholders resident Indian individuals?", "Yes / No. Yes: all shares go under Individual, Indian. No: categories as on last year's form",
+     lambda f, fs: "Yes"),
     ("directors_changed", "Any change in directors / KMP during the year?", "Yes / No", lambda f, fs: "No"),
     ("remuneration", "Remuneration to MD / WTD this year (Name = amount; …)", "e.g. A = 900000; B = 900000", lambda f, fs: _rem_default(f, fs)),
     ("phone", "Telephone number of the company with STD code (portal needs it)", "e.g. 04412345678", lambda f, fs: None),
@@ -369,14 +371,21 @@ def derive(facts, answers, fs):
     # ---- shareholding pattern (carried forward unless holders changed)
     rows = [2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]  # portal row numbers for 1(i)..10 (the 2(...) group skips 5)
     hchanged = _yes(a.get("holders_changed"))
+    all_indian = not str(a.get("holders_all_indian") or "Yes").strip().lower().startswith("n")
     if not hchanged:
         for grp, key in (("a", "promoters"), ("b", "others")):
             pat = f.get(key) or []
             # PDF rows: 1(i),1(ii),1(iii),2(i),2(ii),2(iii),3..10 = 16 rows; portal has 14 data rows
             data = pat[:3] + pat[3:6] + pat[6:14] if len(pat) >= 14 else pat
+            if all_indian and data:
+                # Firm's rule: unless staff say otherwise, every shareholder is a resident Indian individual.
+                tot = [sum((v[0] or 0) for v in data), sum((v[2] or 0) for v in data)]
+                data = [[tot[0], 0, tot[1], 0]] + [[0, 0, 0, 0] for _ in data[1:]]
+            elif len(data) >= 14 and ((data[13][0] or 0) or (data[13][2] or 0)):
+                d.todo.append("Shareholding pattern, 10 Others: type the description of the holder on the portal.")
             for r, vals in zip(rows, data):
-                d.set(f"equity_no_share_{grp}_{r}", _i(vals[0]), LY)
-                d.set(f"pref_tot_no_share_{grp}_{r}", _i(vals[2]), LY)
+                d.set(f"equity_no_share_{grp}_{r}", _i(vals[0]), Q if all_indian else LY)
+                d.set(f"pref_tot_no_share_{grp}_{r}", _i(vals[2]), Q if all_indian else LY)
         d.set("tot_shareholers_vi_a", _i(f.get("n_promoters")), LY)
         d.set("Total_Other_Prometers", _i(f.get("n_others")), LY)
         g = f.get("gender") or {}
