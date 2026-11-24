@@ -26,8 +26,8 @@ MAX = 60 * 1024 * 1024
 # kind, file name the report drafting reads, title, why
 LISTS = [("dir_list", "Directors list.xlsx", "Directors list (Excel)",
           "Names, DINs, designations and dates: goes into the Board's report and the annual return"),
-         ("sh_list", "Shareholders list.xlsx", "Shareholders list (Excel)",
-          "Names and shares held: goes into the annual return and the list of members")]
+         ("sh_list", "Shareholders list.xlsx", "Shareholders list for the reports (plain Excel, not the MCA format)",
+          "Names and shares held: used only to draft the Board's report and the list of members. The MCA upload file is the separate MGT-7A row")]
 
 
 def _safe(name):
@@ -56,8 +56,8 @@ def checklist(folder):
                 slot = folder / filing_queue.ATTACH_DIR / el
                 old = sorted(p for p in slot.glob("*") if p.is_file() and p.name != ff_signed.MERGED) if slot.exists() else []
                 sd = ff_signed.signed_dir(folder)
-                add("signed", "Signed set for MCA: financial statements, Auditor's report, Board's report, AGM notice (PDF)",
-                    "Kept in the client's signed folder. One PDF is attached as it is; several are joined in that order. "
+                add("signed", "This year's signed set for MCA: financial statements, Auditor's report, Board's report, AGM notice (PDF)",
+                    "The app drafts these; after the directors and the auditor sign, the scanned PDF goes here. Kept in the client's signed folder. One PDF is attached as it is; several are joined in that order. "
                     "Until it is here, the form is filled and saved up to the last page only",
                     "must", sorted(p for p in sd.glob("*.pdf") if p.is_file()) + old, multi=True)
                 continue
