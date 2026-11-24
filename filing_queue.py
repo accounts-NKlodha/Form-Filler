@@ -313,7 +313,7 @@ def plan(slug):
     first = []
     for f in m.schema(slug)["fields"]:
         if f.get("name") in ("CIN_Number_Other_User", "CIN_Number_Professional_User") and f["key"] not in have and cin:
-            e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+            e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
             e.update(value=cin, display=cin)
             first.append(e)
     p["fields"] = first + p["fields"]

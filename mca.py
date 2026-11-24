@@ -117,6 +117,53 @@ def clean_label(label):
     return re.sub(r"\s{2,}", " ", _CSS.sub(" ", label)).strip()
 
 
+GROUPS = {  # AOC-4 panels -> the heading staff know from the form
+    "generalinformationpanel": "Company and financial year", "generalouterpanel1": "Company and financial year",
+    "generalouterpanel2": "Company and financial year", "signatorydetailspanel": "Financial statements: board meeting and signatories",
+    "dynamictablesecondpanel": "Board's report: board meeting and signatories", "agmdetailspanel": "Auditor's report date and AGM",
+    "subsidiarydetailspanel": "Holding and subsidiary", "auditordetailspanel": "Auditor",
+    "generalinfopanel": "Type of industry and Schedule III", "generalinfopanel2": "Consolidation and books of account",
+    "generalinfopanel3": "Balance sheet", "detailsoflongtermtablepanel": "Long-term borrowings",
+    "detailsofshorttermtablepanel": "Short-term borrowings", "longtermloansandadvpanel": "Long-term loans and advances",
+    "longtermloansandadvdougpanel": "Long-term loans and advances: doubtful", "detailstradereceivablespanel": "Trade receivables",
+    "financialparameterspanel": "Financial parameters: balance sheet items", "sharecapitalraisedpanel": "Share capital raised during the year",
+    "detailsofsbnpanel": "Specified bank notes", "videtailsrelatedpanel": "Cost records and cost audit",
+    "profitandlosspanel": "Statement of profit and loss", "detailsofearningpanel": "Earnings in foreign exchange",
+    "detailsofexpenditurepanel": "Expenditure in foreign exchange", "profitandlossinner1": "Financial parameters: profit and loss items",
+    "detailsrelatedtoprinciplepanel": "Principal products or services",
+    "disclosureaboutrelatedpanel": "Related parties, auditor's remarks, CSR and secretarial audit",
+    "attachmentpanel": "Attachments and declaration", "attachmentanddeclarationsection": "Attachments and declaration",
+    "attachementsection1": "Attachments and declaration", "declarationunderrulepanel": "Attachments and declaration",
+    "forofficeuseonly": "Attachments and declaration", "languagesection": "Form language", "formlogoandtitle": "Form language",
+    "uploadverifydsc": "DSC upload", "formbasicdetails": "Form reference, filled by the portal",
+    "formlabelanddesciption": "Form language",
+    "companydetailsinformation": "Company details", "companynameaddressemailpanel": "Financial year",
+    "financialyearfromdatepanel": "Financial year", "condonationpanel": "Registered office and registration",
+    "registrationpanel": "Registered office and registration", "relavantformpanel": "Class of company",
+    "numberoftransferpanel": "Share capital and debentures", "securitiespanel": "Share capital and debentures",
+}
+_WRAP = re.compile(r"^(main|block\d*|panel\d+aoc4|fieldpanel|fieldspanel|companydetailsfields|chargesection|chargdetailsalpha|companydeclaration"
+                   r"|section|table|popup|breakuptablepanel|darkpanel\d*|.*inner.*|finalparameter|iifinancialparameterstable|csrapplicability)$")
+
+
+def group_of(f):
+    """Heading for the values list: the form's own section, in words. Never used by the rules (they read sectionText)."""
+    parts = [(re.sub(r"[^a-z0-9]", "", str(x).lower()), str(x)) for x in f.get("section") or []]
+    parts = [(k, x) for k, x in parts if k and (k in GROUPS or not _WRAP.match(k))]
+    for k, _ in reversed(parts):  # the deepest panel we have a name for
+        if k in GROUPS and not (k == "companydetailsinformation" and len(parts) > 1 and parts[-1][0] != k):
+            return GROUPS[k]
+    if parts:
+        k, x = parts[-1]
+        if k in GROUPS:
+            return GROUPS[k]
+        x = re.sub(r"(?<=[a-z])(?=[A-Z])|_", " ", x)
+        x = re.sub(r"\b(panel|section|fields?)\b|\d+$", " ", x, flags=re.I)
+        x = re.sub(r"\s+", " ", x).strip()
+        return (x[:1].upper() + x[1:].lower()) if x else "Other details"
+    return "Other details"
+
+
 def section_text(f):
     """Readable section path: drops the portal's internal panel names (LLP-form04_Panel, Section...)."""
     keep = []
@@ -162,7 +209,7 @@ def schema(slug):
             continue
         seen.add(f["key"])
         n += 1
-        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f))
+        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f), group=group_of(f))
         rep = f.get("repeat")
         if rep and rep.get("groupSom") and f["type"] != "file":
             t = tables.setdefault(rep["groupKey"] or rep["title"], {
@@ -732,7 +779,7 @@ def make_plan(xlsx, slug):
     mp = read_map(slug)
 
     def entry(f, v):
-        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
         e.update(convert(f, v))
         # Previous-year figures: the extension keeps whatever MCA pre-filled.
         if (mp.get(f["key"]) or {}).get("period") == "PY" or re.search(r"previous", f.get("som") or "", re.I):
@@ -750,7 +797,7 @@ def make_plan(xlsx, slug):
                 if not f or f["type"] == "file":
                     continue  # read-only fields are checked live on the portal, not here
                 if len(row) > 9 and row[9]:
-                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
                     e.update(value="", copyFrom=row[9])
                     plan["fields"].append(e)
                     continue
@@ -789,7 +836,7 @@ def make_plan(xlsx, slug):
         for code, src in (("AOC4-079", "AOC4-012"),):
             if code not in have and src in have and code in by_code:
                 f = by_code[code]
-                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
                 e.update(convert(f, have[src]["value"]))
                 plan["fields"].append(e)
     return plan

@@ -413,8 +413,8 @@
 
   async function renderSide() {
     const p = sidePlan;
-    const items = p.fields.map(f => ({ f, label: f.label, section: f.sectionText || '' }));
-    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, section: 'Tables', table: true })));
+    const items = p.fields.map(f => ({ f, label: f.label, section: f.group || f.sectionText || '' }));
+    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, section: 'Tables: ' + t.title, table: true })));
     const on = await page('onPage', { keys: items.map(x => x.f.key) });
     const list = items.filter((x, i) => sideAll || x.table || (on && on[i]));
     side.innerHTML = '';
@@ -441,8 +441,9 @@
       if (x.section !== last) {
         last = x.section;
         const h = document.createElement('div');
-        h.textContent = last || 'General';
-        h.style.cssText = 'margin:10px 0 4px;font-weight:600;color:#334e68;border-bottom:1px solid #d9e2ec';
+        const n = list.filter(y => y.section === last).length;
+        h.textContent = `${last || 'General'} (${n})`;
+        h.style.cssText = 'position:sticky;top:-6px;z-index:1;margin:12px -10px 4px;padding:7px 10px;font-weight:600;font-size:13px;color:#fff;background:#334e68';
         body.appendChild(h);
       }
       const row = document.createElement('div');
