@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 13
+RULES_VERSION = 14
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -447,6 +447,10 @@ def derive(facts, answers, fs):
             "remuneration_managingdirector_name": n, "remuneration_managingdirector_designation": desig.get(n.lower(), "Whole-time director"),
             "remuneration_managingdirector_grosssalary": _i(v), "remuneration_managingdirector_commission": "0",
             "remuneration_managingdirector_stockoption": "0", "remuneration_managingdirector_others": "0"} for n, v in rem]
+    else:
+        # No remuneration keyed in the app: tick the section's Nil box, as on a form filed with no remuneration.
+        d.set("remunaration_checkbox", "Yes", Q)
+        d.set("number_managingdirector_remuneration", "0", Q)
     d.set("number_ceo_cfo_remuneration", "0", LY)
 
     # ---- compliance, penalties, declaration

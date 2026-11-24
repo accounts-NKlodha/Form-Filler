@@ -27,6 +27,7 @@ NICE = {
     "individual_transgender": "Members other than promoters: individual, transgender",
     "other_than_individuals": "Members other than promoters: other than individuals",
     "meeting_held_IXA": "Members' meetings: number of meetings held", "meeting_held_IXB": "Board meetings: number of meetings held",
+    "remunaration_checkbox": "IX Remuneration of directors",
     "details_penalities_ch": "A Details of penalties or punishment imposed on company, directors or officers",
     "details_of_offenses_ch": "B Details of compounding of offences",
     "dinPanMemberShipNum": "DIN, PAN or membership number of the designated person",
@@ -34,7 +35,7 @@ NICE = {
     "DeclarationDesignation": "Declaration: designation of the person signing", "DeclarationDINOfTheDirector": "Declaration: DIN of the director signing",
     "whetherAnyOperating": "40 Whether any operating lease has been converted to financial lease or vice-versa",
 }
-NIL_TICK = {"details_penalities_ch", "details_of_offenses_ch", "ivNill"}  # a ticked box here means "Nil"
+NIL_TICK = {"details_penalities_ch", "details_of_offenses_ch", "ivNill", "remunaration_checkbox"}  # a ticked box here means "Nil"
 MGT7A_SEC = [  # (test on field name / internal panel, section heading in the form's words)
     (lambda n, k: n in ("turnoverV", "NetWorthOfTeCompany"), "V Turnover and net worth"),
     (lambda n, k: n.startswith(("individual_", "other_than_individuals")), "VII Number of promoters, members and debenture holders"),
