@@ -1083,7 +1083,7 @@ def handle_get(path, query):
         if path == "/ff/workbook":
             p = ff_fin.output(folder)
         elif path == "/ff/report":
-            p = (folder / "reports" / Path(q.get("f", "")).name)
+            p = (folder / ("for signing" if q.get("d") == "sign" else "reports") / Path(q.get("f", "")).name)
         else:
             p = ff_audit.export(folder, q.get("f", "aoc4"))
         if not p or not p.exists():

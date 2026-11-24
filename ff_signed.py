@@ -187,8 +187,97 @@ def generate(folder, user=""):
             note = f"The reports could not be drafted: {str(e)[:120]}"
     else:
         note = f"Reports not drafted: {why}"
+    try:
+        pdf, pnote = printable(folder)
+        done.append(pdf.name)
+        note = (note + " " + pnote).strip()
+    except Exception as e:  # noqa: BLE001
+        note = (note + f" The print-ready PDF was not made ({str(e)[:140]}): print from the Excel and Word files.").strip()
     ff_audit.event(folder, "docs", f"Financials for signing generated in '{SIGN_DIR}' ({len(done)} files)", by=user or "staff")
     return d, done, note
+
+
+PRINT_SHEETS = ["BS", "PL", "Cash Flow", "Notes", "Related_Parties", "Ratios"]  # the statements, in print order; working sheets are left out
+_PS = r"""
+param([string]$job)
+$ErrorActionPreference = 'Stop'
+$j = Get-Content -Raw -Encoding UTF8 $job | ConvertFrom-Json
+if ($j.xlsx) {
+  $xl = New-Object -ComObject Excel.Application
+  $xl.Visible = $false; $xl.DisplayAlerts = $false
+  try {
+    $wb = $xl.Workbooks.Open($j.xlsx, 0, $true)
+    foreach ($s in $j.sheets) {
+      try { $ws = $wb.Worksheets.Item($s.name) } catch { continue }
+      if ($ws.Visible -ne -1) { continue }
+      $ws.PageSetup.PaperSize = 9
+      $ws.ExportAsFixedFormat(0, $s.out)
+    }
+    $wb.Close($false)
+  } finally { $xl.Quit() }
+}
+if ($j.docs.Count -gt 0) {
+  $wd = New-Object -ComObject Word.Application
+  $wd.Visible = $false
+  try {
+    foreach ($d in $j.docs) {
+      $doc = $wd.Documents.Open($d.src, $false, $true)
+      $doc.ExportAsFixedFormat($d.out, 17)
+      $doc.Close($false)
+    }
+  } finally { $wd.Quit() }
+}
+"""
+DOC_ORDER = ["audit", "caro", "board", "director", "notice"]
+
+
+def print_name(folder):
+    return f"{Path(folder).name} - for signing.pdf"
+
+
+def printable(folder):
+    """One A4 PDF ready to print and sign: balance sheet, profit and loss, cash flow, notes, then the drafted reports.
+    Made by Excel and Word on this PC (the workbook already carries A4, fit-to-width page set-up and the signature blocks)."""
+    import json
+    import os
+    import subprocess
+    import tempfile
+    from pypdf import PdfReader, PdfWriter
+    folder = Path(folder)
+    d = sign_dir(folder)
+    xlsx = next((p for p in sorted(d.glob("*Schedule III*.xlsx")) if not p.name.startswith("~")), None)
+    if not xlsx:
+        raise ValueError("generate the financials first")
+    docs = [p for p in sorted(d.glob("*.docx")) if not p.name.startswith("~")]
+    rank = lambda p: next((i for i, k in enumerate(DOC_ORDER) if k in p.name.lower()), len(DOC_ORDER))
+    docs.sort(key=lambda p: (rank(p), p.name.lower()))
+    if not hasattr(os, "startfile"):
+        raise ValueError("needs Excel and Word on a Windows PC")
+    with tempfile.TemporaryDirectory() as t:
+        t = Path(t)
+        job = {"xlsx": str(xlsx.resolve()),
+               "sheets": [{"name": n, "out": str(t / f"s{i:02d}.pdf")} for i, n in enumerate(PRINT_SHEETS)],
+               "docs": [{"src": str(p.resolve()), "out": str(t / f"w{i:02d}.pdf")} for i, p in enumerate(docs)]}
+        (t / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        (t / "print.ps1").write_text(_PS, encoding="utf-8")
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(t / "print.ps1"), str(t / "job.json")],
+                           capture_output=True, text=True, timeout=240)
+        parts = [Path(x["out"]) for x in job["sheets"] + job["docs"] if Path(x["out"]).exists()]
+        if not parts:
+            raise ValueError("Excel could not make the PDF: " + (r.stderr or r.stdout or "").strip().replace("\n", " ")[:160])
+        w = PdfWriter()
+        pages = 0
+        for p in parts:
+            for pg in PdfReader(str(p)).pages:
+                w.add_page(pg)
+                pages += 1
+        out = d / print_name(folder)
+        tmp = out.with_suffix(".tmp")
+        with open(tmp, "wb") as fh:
+            w.write(fh)
+        os.replace(tmp, out)
+        missed = len(job["docs"]) - sum(1 for x in job["docs"] if Path(x["out"]).exists())
+    return out, f"Print-ready PDF: {pages} pages." + (f" {missed} Word file(s) could not be converted." if missed else "")
 
 
 def open_folder(folder):
@@ -221,7 +310,9 @@ def gen_box(folder, ui):
             f"<button class=sm data-busy=Generating>Generate financials for signing</button></form> "
             + (f"<form method=post action=/ff/docs/open style=\"display:inline\"><input type=hidden name=c value=\"{c}\">"
                f"<button class=sm>Open folder</button></form>" if files else "") + "</p>"
-            f"<p>Saved in <code>{esc(str(d))}</code>: the Schedule III workbook (balance sheet, profit and loss, notes) and the drafted "
-            f"Board's report, Auditor's report and notice.</p>{warn}"
+            f"<p>Saved in <code>{esc(str(d))}</code>: one print-ready PDF, plus the Schedule III workbook and the drafted reports it is made from.</p>{warn}"
+            + (f"<p><a class=btn href=\"/ff/report?c={q}&f={quote(print_name(folder))}&d=sign\">Open the print-ready PDF</a> "
+               f"<span class=mut>A4, one file: statements, notes and reports with the signature blocks.</span></p>"
+               if (d / print_name(folder)).exists() else "")
             + (f"<ul>{lst}</ul>" if files else "<p class=mut>Nothing generated yet.</p>")
             + "<div style=\"height:16px\"></div>")
