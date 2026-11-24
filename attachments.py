@@ -78,7 +78,7 @@ def make(folder, facts, answers, fy_label):
     mm_src = _find(folder, r"meeting of members")
     # Members' meetings held DURING the year: the AGM of the previous year (its date is on last year's form),
     # not this year's AGM, which falls after the year end.
-    agm = (facts or {}).get("agm_date") or answers.get("prev_agm_date")
+    agm = answers.get("prev_agm_date") or (facts or {}).get("agm_date")
     held = bool(agm)
     if mm_src and agm and held:
         out_dir.mkdir(exist_ok=True)

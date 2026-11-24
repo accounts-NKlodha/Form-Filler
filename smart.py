@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 15
+RULES_VERSION = 16
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -31,6 +31,15 @@ QUESTIONS = [
     ("directors_changed", "Any change in directors / KMP during the year?", "Yes / No", lambda f, fs: "No"),
     ("remuneration", "Directors' remuneration this year: Name = amount for each MD / WTD, or Nil", "e.g. A = 900000; B = 900000, or Nil", lambda f, fs: _rem_default(f, fs)),
     ("phone", "Telephone number of the company with STD code (portal needs it)", "e.g. 04412345678", lambda f, fs: None),
+    ("office_latitude", "Latitude of the registered office", "decimal degrees, e.g. 13.057837 (taken from last year's MGT-7A when it is there)",
+     lambda f, fs: ((f or {}).get("latitude") or [None])[0]),
+    ("office_longitude", "Longitude of the registered office", "decimal degrees, e.g. 80.261486 (taken from last year's MGT-7A when it is there)",
+     lambda f, fs: ((f or {}).get("longitude") or [None])[0]),
+    ("prev_agm_date", "Date of last year's AGM (the members' meeting held during this financial year)", "DD/MM/YYYY (from last year's MGT-7A when it is there)",
+     lambda f, fs: (f or {}).get("agm_date")),
+    ("other_securities", "Any preference shares, debentures or other securities outstanding at the year end?",
+     "Yes / No. No: number of classes is 0 on the form. Yes: staff enter those tables on the portal",
+     lambda f, fs: "Yes" if (f or {}).get("preference_classes") else "No"),
     ("penalties", "Any penalty, punishment or compounding during the year?", "Yes / No", lambda f, fs: "No"),
     ("resolution_date", "Date of board resolution authorising the signatory", "DD/MM/YYYY", lambda f, fs: None),
     ("signing_din", "DIN of the director who will sign (DSC)", "8 digits",
@@ -296,12 +305,13 @@ def derive(facts, answers, fs):
     # Name, address, lat/long "as on FY end": same as the portal's own "as on filing date" values.
     # Name / address / lat-long "as on FY end" are kept by the portal itself: never touch them.
     d.set("TelephoneNumber", a.get("phone"), Q)
-    for key in ("latitude", "longitude"):  # registered office co-ordinates: same office, so same as last year
-        pair = f.get(key) or []
+    for key in ("latitude", "longitude"):  # registered office co-ordinates: staff answer first, else same as last year
+        ans = str(a.get("office_" + key) or "").strip()
+        pair = [ans, ans] if ans else (f.get(key) or [])
         for n, v in zip((1, 2), pair):
-            d.set(f"{key}_details{n}", v, LY)
-    if not f.get("latitude") or not f.get("longitude"):
-        d.todo.append("Latitude and longitude of the registered office: not on last year's MGT-7A, type them on the portal.")
+            d.set(f"{key}_details{n}", v, Q if ans else LY)
+        if not pair:
+            d.todo.append(f"{key.capitalize()} of the registered office: answer it on Inputs for the forms (not on last year's MGT-7A).")
     cls = f.get("class") or ""
     d.set("ClassOfCompany1", "One Person Company" if "one person" in cls.lower() else ("Private company" if cls else None), LY)
     d.set("CategoryCompany", f.get("category"), LY)
@@ -338,7 +348,9 @@ def derive(facts, answers, fs):
             "nominalvalue_authorizedcapital": _i(nominal), "nominalvalue_issuedcapital": _i(nominal),
             "nominalvalue_subscribedcapital": _i(nominal), "nominalvalue_paidupcapital": _i(nominal),
             "tot_amt_subscribed_capital": _i(paid_amt), "tot_amt_paidupcapital": _i(paid_amt)}]
-    d.set("preference_shareClass", str(f.get("preference_classes") or 0), LY)
+    other_sec = _yes(a.get("other_securities"))
+    if not other_sec:
+        d.set("preference_shareClass", "0", Q)
     d.set("unclassified_shareAmt", "0", LY)
     ye = f.get("equity_year_end")
     if ye and not changed:
@@ -359,8 +371,11 @@ def derive(facts, answers, fs):
         d.set("ivNill", "Yes", LY)
     elif changed:
         d.todo.append("Share capital changed: enter the paid-up break-up (IV(d)) and transfers by hand.")
-    for n in ("Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "SecutiryOtherShareDebeunt"):
-        d.set(n, "0", LY)
+    if other_sec:
+        d.todo.append("Preference shares, debentures or other securities are outstanding: enter their number of classes and tables on the portal.")
+    else:
+        for n in ("Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "SecutiryOtherShareDebeunt"):
+            d.set(n, "0", Q)
 
     # ---- turnover / net worth
     t = _num(fs, "PL:Revenue from operations")
@@ -406,8 +421,8 @@ def derive(facts, answers, fs):
 
     # ---- meetings and attendance
     bm = _dates(a.get("board_meetings"))
-    prev_agm = f.get("agm_date") or a.get("prev_agm_date")  # members' meeting held during this year = last year's AGM
-    d.set("meeting_held_IXA", "1" if prev_agm else "0", LY if f.get("agm_date") else Q)
+    prev_agm = a.get("prev_agm_date") or f.get("agm_date")  # members' meeting held during this year = last year's AGM
+    d.set("meeting_held_IXA", "1" if prev_agm else "0", Q if a.get("prev_agm_date") else LY)
     if not prev_agm:
         d.todo.append("Members' meetings during the year: last year's AGM date not found; if one was held, enter the count and attach the Excel by hand.")
     if bm:
