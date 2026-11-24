@@ -305,7 +305,8 @@
     // Progress = something typed, or fewer fields still waiting below a Save (a section that already held its values).
     // Fields still to come: below an unclicked Save, or still locked by the portal until the Save above is in.
     const leftNow = (count['next-section'] || 0) + ((res.save && res.save.locked) || 0);
-    const idleNow = (count.filled || (left >= 0 && leftNow < left)) ? 0 : idle + 1;
+    // A new page brings its own count of waiting fields: any change in that count is progress, not an idle round.
+    const idleNow = (count.filled || (left >= 0 && leftNow !== left) || (res.save && res.save.next)) ? 0 : idle + 1;
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
     if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 40 && idleNow < 2 && !stopLoop) {
       status(`Round ${round + 1}: filled <b>${count.filled || 0}</b>. ${esc(res.save.msg)}. Continuing… <small>(Alt+Shift+X stops)</small>`);

@@ -154,6 +154,19 @@ def read_mgt7a(path):
     f["directors"] = [{"din": din, "name": name.strip(), "entitled": int(a), "attended": int(b), "agm": agm}
                       for _, din, name, a, b, _p, agm in
                       re.findall(r"^(\d+) (\d{8}) (.+?) (\d+) (\d+) (" + NUM + r") (Yes|No|NA)$", text, re.M)]
+    if not f["directors"]:
+        # Long names wrap: the name sits on the line above and the line below "1 <DIN> 5 5 100.00 Yes".
+        ls = text.splitlines()
+        row = re.compile(r"^(\d+) (\d{8}) (\d+) (\d+) (" + NUM + r") (Yes|No|NA)$")
+        plain = lambda x: bool(x) and not re.search(r"\d|^Page |^IX |\(", x)  # noqa: E731
+        for i, l in enumerate(ls):
+            m = row.match(l.strip())
+            if not m:
+                continue
+            up = ls[i - 1].strip() if i and plain(ls[i - 1].strip()) else ""
+            dn = ls[i + 1].strip() if i + 1 < len(ls) and plain(ls[i + 1].strip()) else ""
+            f["directors"].append({"din": m.group(2), "name": " ".join(x for x in (up, dn) if x), "entitled": int(m.group(3)),
+                                   "attended": int(m.group(4)), "agm": m.group(6)})
     # IX remuneration of MD / WTD / Manager: amounts row "1 900000 0 0 0 900000.00"
     rem = []
     s = re.search(r"A \*Number of Managing Director", text)
