@@ -51,12 +51,47 @@ MGT7A_SEC = [  # (test on field name / internal panel, section heading in the fo
 ]
 
 
+# Shareholding pattern (MGT-7A, VI): the portal's boxes carry no row text, only a row number in their name.
+SH_ROWS = {2: "1 Individual or Hindu undivided family: (i) Indian", 3: "1 Individual or Hindu undivided family: (ii) Non-resident Indian (NRI)",
+           4: "1 Individual or Hindu undivided family: (iii) Foreign national (other than NRI)",
+           6: "2 Government: (i) Central Government", 7: "2 Government: (ii) State Government", 8: "2 Government: (iii) Government companies",
+           9: "3 Insurance companies", 10: "4 Banks", 11: "5 Financial institutions", 12: "6 Foreign institutional investors",
+           13: "7 Mutual funds", 14: "8 Venture capital", 15: "9 Body corporate (not mentioned above)", 16: "10 Others"}
+SH_COL = {"equity_no_share": "Equity: number of shares", "equity_percent": "Equity: %", "pref_tot_no_share": "Preference: number of shares",
+          "pref_percent": "Preference: %"}
+SH_PART = {"a": "(a) Promoters", "b": "(b) Public / other than promoters"}
+COLS = {  # raw column names in repeating tables
+    "numberequity_authorizedcapital": "Number of shares: authorised", "numberequity_issuedcapital": "Number of shares: issued",
+    "numberequity_subscribed_capital": "Number of shares: subscribed", "numberequity_paidupcapital": "Number of shares: paid-up",
+    "nominalvalue_authorizedcapital": "Nominal value per share (Rs): authorised", "nominalvalue_issuedcapital": "Nominal value per share (Rs): issued",
+    "nominalvalue_subscribedcapital": "Nominal value per share (Rs): subscribed", "nominalvalue_paidupcapital": "Nominal value per share (Rs): paid-up",
+    "tot_amt_authorizedcapital": "Total amount (Rs): authorised", "tot_amt_issuedcapital": "Total amount (Rs): issued",
+    "tot_amt_subscribed_capital": "Total amount (Rs): subscribed", "tot_amt_paidupcapital": "Total amount (Rs): paid-up",
+    "principal_mainactivity_code": "Main activity group code", "business_activitycode": "Business activity code",
+    "Principal_turnover": "% of turnover of the company",
+}
+
+
+def _shareholding(f):
+    """(part, label) for a shareholding pattern box, or None."""
+    m = re.fullmatch(r"(equity_no_share|equity_percent|pref_tot_no_share|pref_percent)_([ab])(?:_(\d+))?", f.get("name") or "")
+    if not m:
+        return None
+    row = SH_ROWS.get(int(m.group(3))) if m.group(3) else "Total"
+    return SH_PART[m.group(2)], f"{row or 'Row ' + m.group(3)} / {SH_COL[m.group(1)]}"
+
+
 def _table_title(t):
     title, key = str(t.get("title") or ""), str(t.get("groupKey") or "")
     if "panel_2074267803_cop" in key:
         return "Signatories of the board's report"
     if "panel_2074267803-" in key:
         return "Signatories of the financial statements"
+    first = [str(c.get("label") or "") for c in (t.get("rows") or [[]])[0]]
+    if any(x.startswith("numberequity_") for x in first):
+        return "Equity share capital"
+    if any(x.startswith("numberpref") or x.startswith("numberpreference") for x in first):
+        return "Preference share capital"
     if title == "auditorDetailsInnerPanel":
         return "Auditor details"
     if re.fullmatch(r"Row \d+", title) or not title:
@@ -70,6 +105,11 @@ def _table_title(t):
 def _col_label(c):
     import mca
     lab = mca.clean_label(str(c.get("label") or ""))
+    if lab in COLS:
+        return COLS[lab]
+    if " " not in lab and ("_" in lab or re.search(r"[a-z][A-Z]", lab)):  # an internal box name: put spaces in
+        lab = re.sub(r"(?<=[a-z])(?=[A-Z])|_", " ", lab).strip()
+        lab = lab[:1].upper() + lab[1:].lower()
     return "Date" if re.match(r"(text box|date picker)\s+please enter date", lab, re.I) else lab
 
 
@@ -191,6 +231,13 @@ def form_html(folder, slug, ui):
         f = dict(f, label=NICE.get(f.get("name") or "") or mca.clean_label(f.get("label") or r["label"]))
         if slug == "mgt7a":
             f["segment"], f["group"] = _mgt7a(f), ""
+            sh = _shareholding(f)
+            if sh:
+                f["segment"], f["group"], f["label"] = "VI Shareholding pattern", sh[0], sh[1]
+            elif f.get("name") in ("tot_shareholers_vi_a",):
+                f["group"] = SH_PART["a"]
+            elif f.get("name") in ("Total_Other_Prometers", "Total_Promoters_public_Share"):
+                f["group"] = SH_PART["b"]
         r = dict(r, _nil_tick=(f.get("name") in NIL_TICK), _tick=(f.get("type") == "checkbox"))
         k = (f.get("segment") or "", f.get("group") if f.get("segment") else (f.get("group") or "Other details"))
         if blocks and (blocks[-1][0], blocks[-1][1]) == k:
@@ -224,9 +271,17 @@ def form_html(folder, slug, ui):
         body = ""
         for i, row in enumerate(t["rows"], 1):
             by = {_col_label(c): c for c in row}
-            extra += len(row)
             body += f"<tr><td>Row {i}</td>" + "".join(
                 f"<td><div class=\"box t\">{ui.esc(str(by[c].get('display', by[c].get('value', ''))) if c in by else '') or '&nbsp;'}</div></td>" for c in cols) + "</tr>"
+        extra += sum(len(row) for row in t["rows"])
+        if len(cols) > 5:  # too wide to read across: one line per column, one value column per row
+            cell = lambda row, c: next((x for x in row if _col_label(x) == c), None)  # noqa: E731
+            val = lambda x: (ui.esc(str(x.get("display", x.get("value", "")))) if x else "") or "&nbsp;"  # noqa: E731
+            body = "".join(f"<tr><td>{ui.esc(c[:80])}</td>" + "".join(f"<td><div class=\"box t\">{val(cell(row, c))}</div></td>" for row in t["rows"]) + "</tr>"
+                           for c in cols)
+            head = "<tr><th>Particulars</th>" + "".join(f"<th style=\"text-align:left\">Row {i}</th>" for i in range(1, len(t["rows"]) + 1)) + "</tr>"
+            html.append(f"<div class=part>{ui.esc(_table_title(t))}</div><div class=blk><table>{head}{body}</table></div>")
+            continue
         head = "<tr><th>&nbsp;</th>" + "".join(f"<th style=\"text-align:left\">{ui.esc(c[:60])}</th>" for c in cols) + "</tr>"
         html.append(f"<div class=part>{ui.esc(_table_title(t))}</div><div class=blk><table>{head}{body}</table></div>")
     return "".join(html), len(rows) + extra, nils
