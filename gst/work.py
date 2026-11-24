@@ -135,7 +135,7 @@ def ingest(client_folder, gstin, fy, raw, user, source="upload"):
         old = [p for p, _ in _files(folder) if (_read(p).get("kind"), _read(p).get("period")) == (kind, period)]
         if any(hashlib.sha256(p.read_bytes()).hexdigest() == sha for p in old):
             return dict(kind=kind, period=period, state="same", file=name)
-        for p in old:   # keep what was there: every figure must stay traceable
+        for p in old + ([dest] if dest.exists() and dest not in old else []):   # keep what was there: every figure must stay traceable
             keep = folder / "_replaced" / ("%s_%s" % (dt.datetime.now().strftime("%Y%m%d-%H%M%S"), p.name))
             keep.parent.mkdir(parents=True, exist_ok=True)
             p.replace(keep)
