@@ -10,10 +10,16 @@ from pathlib import Path
 import openpyxl
 
 
-def _find(folder, pat):
-    for p in sorted(Path(folder).glob("*.xlsm")):
-        if re.search(pat, p.name, re.I) and "this year" not in p.name.lower():
-            return p
+TEMPLATES = Path(__file__).resolve().parent / "Samples" / "MGT 7A"  # MCA's blank formats, kept beside the app
+
+
+def _find(folder, pat, shared=True):
+    """Last year's copy in the client folder, else (shared) MCA's format from the app's Samples folder.
+    A shared file may hold another company's rows: use it only where every row is rewritten."""
+    for d in [Path(folder)] + ([TEMPLATES] if shared else []):
+        for p in sorted(d.glob("*.xlsm")) if d.exists() else []:
+            if re.search(pat, p.name, re.I) and "this year" not in p.name.lower():
+                return p
     return None
 
 
@@ -36,7 +42,8 @@ def make(folder, facts, answers, fy_label):
     out_dir = folder / "attachments"
     made = []
     dirs = (facts or {}).get("directors") or []
-    n_dirs = len(dirs)
+    last_bm = (facts or {}).get("board_meetings") or []
+    n_dirs = len(dirs) or int((last_bm[-1].get("directors") if last_bm else 0) or 0)  # no director list read: last year's board strength
     all_att = str(answers.get("all_attended") or "Yes").lower().startswith("y")
 
     bm_src = _find(folder, r"board\s*meeting")
@@ -56,12 +63,12 @@ def make(folder, facts, answers, fy_label):
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Meeting of members - {fy_label}.xlsm"
         last = ((facts or {}).get("member_meetings") or [{}])[0]
-        entitled = last.get("entitled")
+        entitled = last.get("entitled") or (facts or {}).get("n_holders_listed")
         _rewrite(mm_src, out, "Sheet1", 2, [["AGM", datetime.strptime(agm, "%d/%m/%Y"), entitled,
                                              entitled if all_att else None, 100 if all_att else None]])
         made.append((out.name, "AGM row"))
 
-    sh_src = _find(folder, r"shareholder")
+    sh_src = _find(folder, r"shareholder", shared=False)  # never another company's list
     if sh_src and not str(answers.get("holders_changed") or "No").lower().startswith("y"):
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Shareholder list - {fy_label}.xlsm"
