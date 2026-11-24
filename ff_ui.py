@@ -12,6 +12,7 @@ ADT-1 list, captured forms, local AI) stay reachable under "More".
 """
 import json
 import re
+import sys
 from datetime import datetime
 from html import escape
 from pathlib import Path
@@ -664,6 +665,11 @@ def _signed_box(folder):
 
 def _preview(folder):
     """Every value Form Filler will type on MCA, laid out field by field in form order, with its source in the same box."""
+    try:  # laid out like the MCA form (ff_preview.py); the older list below is the fallback
+        import ff_preview
+        return ff_preview.render(folder, sys.modules[__name__])
+    except Exception:  # noqa: BLE001
+        pass
     if not app.inputs_path(folder).exists():
         return "<p class=mut>The form values are prepared after Get data. Nothing to preview yet.</p>"
     forms = [s for s in (app.load(folder).get("forms") or []) if s in app.SMART]
