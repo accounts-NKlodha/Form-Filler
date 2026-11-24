@@ -623,8 +623,10 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
                  else tag("Suggested") if ans.strip() else "")
             trs.append(f"<tr><td style=\"width:50%\">{esc(text)}<div class=mut>{esc(how)}</div></td><td>{field}</td><td>{t}</td></tr>")
         return (f"<form method=post action=/ff/answers><input type=hidden name=c value=\"{esc(name)}\">"
-                f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div><table>{''.join(trs)}</table>"
-                f"<p class=row><button class=sm data-busy=Saving>Save answers</button> <a class=btn href=\"/ai/questions?c={q}\">Suggest answers with local AI</a></p></form>")
+                f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div>"
+                f"<p class=row><a class=btn href=\"/ai/questions?c={q}\">Suggest answers with local AI</a> <button class=sm data-busy=Saving>Save answers</button></p>"
+                f"<table>{''.join(trs)}</table>"
+                f"<p class=row><button class=sm data-busy=Saving>Save answers</button></p></form>")
     if tab == "reports":
         ok, why = ff_fin.docs_ready(folder)
         made = ff_fin.docs_list(folder)
