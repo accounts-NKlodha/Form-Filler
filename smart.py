@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 3
+RULES_VERSION = 4
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -488,6 +488,10 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     if end:
         # Balance sheet header date: "Figures as at the end of (Current reporting period)"
         d.set("FiguresAtEndOfCurrentReporting", end.strftime("%d/%m/%Y"), FS)
+        # Previous period dates. Without them the portal empties every previous-year figure on Save.
+        prev_end = end.replace(year=end.year - 1)
+        d.set("figuresAsEndOfPreviousReporting", prev_end.strftime("%d/%m/%Y"), FS)
+        d.set("segIIPreviousFrom", (prev_end.replace(year=prev_end.year - 1) + timedelta(days=1)).strftime("%d/%m/%Y"), FS)
     # Gross PPE (financial parameter 44) = net PPE and intangibles + depreciation for the year (firm practice)
     gross = _setup_amount(fs, "Gross property plant and equipment") or         _num(fs, "BS:Property, plant and equipment + BS:Intangible assets + PL:Depreciation and amortization expense")
     try:
