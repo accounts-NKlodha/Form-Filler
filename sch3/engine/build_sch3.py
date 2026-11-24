@@ -417,7 +417,7 @@ if _sh.get("promoters"):
 r += 0
 end_note(); r += 1
 
-# Note: reserves and surplus (movement) - Parekh layout as signed FY 24-25 note 2
+# Note: reserves and surplus (movement) - Client name 2 layout as signed FY 24-25 note 2
 note_header("RS")
 def S(tb, col, codecol, code, extra=""):
     return f'SUMIFS({tb}!${col}$2:${col}$3001,{tb}!${codecol}$2:${codecol}$3001,"{code}"{extra})'
