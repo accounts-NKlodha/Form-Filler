@@ -1060,7 +1060,9 @@
         else {
           const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
           const dt = new DataTransfer();
-          const type = /\.jpe?g$/i.test(req.name) ? 'image/jpeg' : /\.png$/i.test(req.name) ? 'image/png' : 'application/pdf';
+          const type = /\.jpe?g$/i.test(req.name) ? 'image/jpeg' : /\.png$/i.test(req.name) ? 'image/png'
+            : /\.xlsm$/i.test(req.name) ? 'application/vnd.ms-excel.sheet.macroEnabled.12'
+            : /\.xlsx$/i.test(req.name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
           dt.items.add(new File([bytes], req.name, { type }));
           input.files = dt.files;
           input.dispatchEvent(new Event('change', { bubbles: true }));

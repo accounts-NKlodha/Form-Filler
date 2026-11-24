@@ -23,6 +23,25 @@ def _find(folder, pat, shared=True):
     return None
 
 
+def _from_filed_form(folder, pat):
+    """The Excel attached to last year's filed MGT-7A (MCA keeps attachments inside the form PDF), saved into the client folder."""
+    try:
+        import lastyear
+        from pypdf import PdfReader
+        pdf = lastyear.find_last_mgt7a(folder)
+        if not pdf:
+            return None
+        for name, datas in (PdfReader(str(pdf)).attachments or {}).items():
+            if re.search(pat, name, re.I) and name.lower().endswith((".xlsm", ".xlsx")) and datas:
+                out = Path(folder) / re.sub(r"^\d+_", "", name)
+                if not out.exists():
+                    out.write_bytes(datas[0])
+                return out
+    except Exception:  # noqa: BLE001  unreadable PDF: staff attach by hand
+        return None
+    return None
+
+
 def _rewrite(src, out, sheet, first_row, rows):
     shutil.copyfile(src, out)
     wb = openpyxl.load_workbook(out, keep_vba=True)
@@ -70,10 +89,11 @@ def make(folder, facts, answers, fy_label):
                                              entitled if all_att else None, 100 if all_att else None]])
         made.append((out.name, f"last year's AGM, held {agm}"))
 
-    sh_src = _find(folder, r"shareholder", shared=False)  # never another company's list
+    # never another company's list: the client's own copy, else the one inside last year's filed form
+    sh_src = _find(folder, r"shareholder", shared=False) or _from_filed_form(folder, r"shareholder")
     if sh_src and not str(answers.get("holders_changed") or "No").lower().startswith("y"):
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Shareholder list - {fy_label}.xlsm"
         shutil.copyfile(sh_src, out)
-        made.append((out.name, "same shareholders as last year (no change answered)"))
+        made.append((out.name, f"same shareholders as last year (no change answered), from {sh_src.name}"))
     return made

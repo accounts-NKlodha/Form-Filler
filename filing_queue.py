@@ -25,7 +25,8 @@ STATUS_TEXT = {"queued": "Waiting", "filling": "Filling now", "submitted": "Subm
 ATTACH = {
     "aoc4": [("aoc4_financialState", "Signed financial statements with auditor's and board's reports (attachment a)", True, "Financial statements"),
              ("aoc4_optional", "Optional attachment", False, "Optional attachment")],
-    "mgt7a": [("mgt7a_Photograph", "Photograph of the registered office showing the building and name board", True, "Registered office photo")],
+    "mgt7a": [("mgt7a_Photograph", "Photograph of the registered office showing the building and name board", True, "Registered office photo"),
+              ("mgt7a_shareholders", "List of shareholders (MCA Excel, prepared by the app when shareholders did not change)", False, "Shareholder list")],
 }
 ATTACH_DIR = "mca_attachments"
 
@@ -97,6 +98,9 @@ def attachment_files(folder, slug):
                 out[el] = path
             continue
         files = sorted(p for p in d.glob("*") if p.is_file()) if d.exists() else []
+        if not files and el == "mgt7a_shareholders":  # the copy the app carried forward from last year's filed form
+            a = Path(folder) / "attachments"
+            files = sorted(p for p in a.glob("*hareholder*.xls*") if not p.name.startswith("~$")) if a.exists() else []
         if files:
             out[el] = files[-1]
     return out
