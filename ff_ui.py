@@ -78,7 +78,7 @@ def fy_label(folder=None):
 
 # ---------------------------------------------------------------- shell
 
-CSS = """
+CSS_CLASSIC = """
 :root{--bg:oklch(0.985 0.004 95);--fg:oklch(0.235 0.014 260);--surface:oklch(0.972 0.005 95);--card:oklch(1 0 0);
 --primary:oklch(0.285 0.038 258);--on-primary:oklch(0.985 0.004 95);--muted:oklch(0.957 0.005 95);--mfg:oklch(0.47 0.014 258);
 --brass:oklch(0.62 0.086 76);--bad:oklch(0.52 0.176 27);--good:oklch(0.45 0.088 158);--info:oklch(0.47 0.07 245);
@@ -152,6 +152,94 @@ tr.sub td{background:var(--surface);font-size:13px;padding:5px 8px}tr.sub td:fir
 .fit{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}.fit>.card{overflow-y:auto;min-height:0;scrollbar-gutter:stable}
 .fit>.card th{position:sticky;top:-24px;background:var(--card);padding-top:8px;z-index:1}}
 .total td{font-weight:600}.hd td{font-weight:600;color:var(--mfg);background:var(--surface)}
+.theme{display:flex;flex-direction:column;gap:4px;padding:12px 12px 0;font-size:13px}.theme select{height:32px;font-size:13px;width:100%;background:var(--side-on);color:#fff;border-color:var(--side-line)}
+"""
+
+
+CSS = """
+:root{--bg:oklch(0.975 0.008 85);--fg:oklch(0.2 0.02 160);--surface:oklch(0.95 0.01 85);--card:oklch(0.993 0.004 85);
+--primary:oklch(0.4 0.08 160);--on-primary:oklch(0.98 0.01 120);--muted:oklch(0.94 0.012 85);--mfg:oklch(0.47 0.02 150);
+--brass:oklch(0.55 0.1 160);--bad:oklch(0.5 0.17 28);--good:oklch(0.45 0.1 155);--info:oklch(0.48 0.1 240);--warn:oklch(0.48 0.11 70);
+--bad-soft:oklch(0.95 0.035 28);--good-soft:oklch(0.94 0.04 155);--info-soft:oklch(0.95 0.025 240);--warn-soft:oklch(0.95 0.05 85);
+--bad-line:oklch(0.87 0.06 28);--good-line:oklch(0.86 0.06 155);--warn-line:oklch(0.86 0.08 85);
+--border:oklch(0.89 0.012 85);--strong:oklch(0.86 0.015 85);--ring:oklch(0.55 0.1 160);
+--side:oklch(0.94 0.012 85);--side-fg:oklch(0.28 0.02 160);--side-on:oklch(0.9 0.014 85);--side-line:oklch(0.89 0.012 85);
+--serif:"Source Serif 4",Georgia,serif}
+*{box-sizing:border-box}
+body{margin:0;font:14px/20px "IBM Plex Sans",system-ui,sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+a{color:var(--primary)}:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.num,td.n,th.n{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+aside{position:fixed;inset:0 auto 0 0;width:248px;background:var(--side);color:var(--side-fg);border-right:1px solid var(--side-line);padding:20px 14px 16px;display:flex;flex-direction:column;gap:4px;z-index:5;overflow-y:auto}
+.brand{color:var(--fg);font-family:var(--serif);font-weight:600;font-size:19px;line-height:24px;padding:0 6px 14px;text-decoration:none;display:block}
+.brand small{display:block;font-family:"IBM Plex Sans",system-ui,sans-serif;font-weight:400;font-size:13px;color:var(--mfg)}
+aside .who{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--side-line);border-radius:6px;background:var(--card);font-size:13px;font-weight:500;margin-bottom:14px}
+aside .who input{height:34px;border-radius:5px;border:1px solid var(--strong);background:var(--bg);color:var(--fg);padding:0 10px;font:inherit;font-weight:400;width:100%}
+aside .who small{font-weight:400;color:var(--mfg);font-size:13px;line-height:17px}
+aside .grp{font-size:13px;font-weight:500;color:var(--mfg);padding:6px 6px 4px}
+aside a.nv{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:6px;color:var(--side-fg);text-decoration:none;font-weight:500}
+aside a.nv:hover{background:var(--side-on)}aside a.on,aside a.on:hover{background:var(--primary);color:var(--on-primary)}
+aside a.nv .k{width:20px;height:20px;border-radius:4px;background:var(--side-on);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;font-variant-numeric:tabular-nums}
+aside a.on .k{background:oklch(1 0 0 / .18)}aside a.nv .k.none{background:none}
+aside a.nv .nm{display:flex;flex-direction:column}aside a.nv small{font-weight:400;font-size:13px;line-height:18px;color:var(--mfg)}
+aside a.nv small.at{color:var(--bad)}aside a.on small,aside a.on small.at{color:var(--on-primary);opacity:.85}
+aside .gap{height:1px;background:var(--side-line);margin:12px 0 8px}
+aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 6px 0;font-size:13px;line-height:18px}
+aside .more a{color:var(--mfg);display:block;padding:4px 0;text-decoration:none}aside .more a:hover{color:var(--fg);text-decoration:underline}aside .more a.on{font-weight:600;color:var(--fg);background:none}
+main{margin-left:248px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.crumb{font-size:13px;color:var(--mfg)}h1{font-family:var(--serif);font-size:27px;line-height:34px;font-weight:600;letter-spacing:-.005em;margin:2px 0 0}
+.acts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:24px;align-items:start}
+.s8{grid-column:span 8}.s4{grid-column:span 4}.s7{grid-column:span 7}.s5{grid-column:span 5}.s9{grid-column:span 9}.s3{grid-column:span 3}.s12{grid-column:span 12}
+@media (max-width:1100px){.g12>*{grid-column:span 12!important}main{padding:24px 16px;margin-left:0}aside{position:static;width:auto}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:24px}
+.h{font-size:14px;font-weight:500;color:var(--mfg);margin:0 0 12px}
+table{width:100%;border-collapse:collapse}th{font-weight:600;color:var(--side-fg);font-size:13px;text-align:left;padding:0 8px 8px}
+td{border-top:1px solid var(--border);padding:8px;vertical-align:top}tr.sel td{background:var(--muted)}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--surface)}
+.tag{display:inline-block;font-size:13px;line-height:18px;border:1px solid var(--strong);border-radius:4px;padding:1px 8px;white-space:nowrap;background:var(--card)}
+.tag{border-radius:999px;border-color:var(--border);background:var(--muted);color:var(--mfg)}.need{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn);font-weight:600}.good{border-color:var(--good-line);background:var(--good-soft);color:var(--good);font-weight:500}.badt{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad);font-weight:600}
+.work{border-color:oklch(0.86 0.04 240);background:var(--info-soft);color:var(--info);font-weight:500}
+.mut{color:var(--mfg);font-size:13px}.err{color:var(--bad)}.ok{color:var(--good)}
+.btn,button{font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 16px;border:1px solid var(--strong);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn:hover,button:hover{background:var(--muted)}button:disabled{opacity:.45;cursor:not-allowed}
+.p{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}.p:hover{background:color-mix(in oklab,var(--primary) 88%,black)}.p:disabled{background:var(--strong);border-color:var(--strong);color:var(--mfg);opacity:1}
+.sm{height:32px;font-size:13px;padding:0 12px}.link{border:0;background:none;height:auto;padding:0;color:var(--primary);text-decoration:underline;font-size:13px}
+input[type=text],select,textarea{font:inherit;height:36px;padding:0 10px;border:1px solid var(--strong);border-radius:6px;background:var(--card);color:var(--fg);min-width:0}
+textarea{height:auto;padding:8px 10px}input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mfg)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.steps{display:flex;gap:10px}.steps>div{flex:1;border:1px solid var(--warn-line);background:var(--warn-soft);border-radius:6px;padding:10px 14px;min-width:0}.steps>div.d{border-color:var(--good-line);background:var(--good-soft)}.steps>div.d .mut{color:var(--good)}.steps>div:not(.d) .mut{color:var(--warn)}
+.steps b{display:block;margin-bottom:2px}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.filters a{text-decoration:none;color:var(--fg)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding-bottom:12px}.tabs a{padding:6px 12px;border-radius:6px;color:var(--side-fg);text-decoration:none}
+.tabs a:hover{background:var(--muted)}.tabs a.on,.tabs a.on:hover{background:var(--primary);color:var(--on-primary);font-weight:600}
+.msg{border:1px solid var(--good-line);background:var(--good-soft);border-radius:6px;padding:10px 16px;white-space:pre-wrap}
+.chain{border-left:2px solid var(--primary);padding:0 0 16px 16px}.chain:last-child{padding-bottom:0}.chain.off{border-color:var(--strong)}
+.chain b{display:block}.ledgers{margin:6px 0 0;padding:0;list-style:none;font-size:13px}.ledgers li{display:flex;justify-content:space-between;gap:12px;border-top:1px dashed var(--border);padding:3px 0}
+.pt{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding:10px 0}.pt:first-of-type{border-top:0}
+.pt.done{flex-direction:row;justify-content:space-between;align-items:flex-start;gap:12px}
+.ptsec.fix>.pt,.ptsec.read>.pt{border:1px solid var(--bad-line);background:var(--bad-soft);border-radius:6px;padding:12px;margin-top:10px}.ptsec.read>.pt{border-color:var(--warn-line);background:var(--warn-soft)}.ptsec.fix>.ptt,.ptsec.fix .ptn{color:var(--bad)}.ptsec.read>.ptt,.ptsec.read .ptn{color:var(--warn)}.ptsec .ptn{border:0;width:auto;height:auto;font-weight:600;font-variant-numeric:tabular-nums;line-height:20px}.ptsec .ptn::after{content:"."}
+.ptsec{margin-top:16px}.ptsec:first-of-type{margin-top:4px}.ptt{font-weight:600;font-size:14px}.ptsec>summary{font-weight:600;font-size:14px;color:var(--fg)}
+.pth{display:flex;gap:8px;align-items:flex-start}.ptn{flex:none;width:22px;height:22px;border-radius:11px;border:1px solid var(--strong);font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.wait{background:var(--muted);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--mfg)}a.btn.sm{display:inline-flex;align-items:center;text-decoration:none}
+table.fixed{table-layout:fixed}table.fixed td{overflow-wrap:anywhere}
+.log{display:grid;grid-template-columns:64px 1fr;gap:12px;border-top:1px solid var(--border);padding:8px 0;font-size:13px}.log:first-of-type{border-top:0}
+details>summary{cursor:pointer;color:var(--primary);font-size:13px}
+tr.dl .car{display:inline-block;width:16px;color:var(--mfg);transition:transform .1s}tr.dl[aria-expanded=true] .car{transform:rotate(90deg)}
+tr.sub td{background:var(--surface);font-size:13px;padding:5px 8px}tr.sub td:first-child{padding-left:32px}
+.steps a{display:block}.steps>div.d b::after{content:" \\2713";color:var(--good)}
+.doc{display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:start;border-top:1px solid var(--border);padding:12px 8px}
+.doc.over{background:var(--muted);outline:2px dashed var(--strong)}.doc .fl{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px}
+.doc .side{display:flex;gap:8px;align-items:center;justify-content:flex-end}.pick{position:relative;overflow:hidden}
+.pick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}.pick:focus-within{outline:2px solid var(--brass)}
+.sec{font-size:13px;font-weight:600;color:var(--mfg);margin:20px 0 0;padding:0 8px 8px}.sec:first-of-type{margin-top:4px}
+.pbar{height:6px;background:var(--muted);border-radius:3px;overflow:hidden;margin:8px 0 4px}.pbar>i{display:block;height:6px;background:var(--good)}
+@media (min-width:1101px) and (min-height:640px){main:has(>.fit){height:100vh;box-sizing:border-box;overflow:hidden;padding-bottom:24px}
+.fit{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}.fit>.card{overflow-y:auto;min-height:0;scrollbar-gutter:stable}
+.fit>.card th{position:sticky;top:-24px;background:var(--card);padding-top:8px;z-index:1}}
+.total td{font-weight:600}.hd td{font-weight:600;color:var(--mfg);background:var(--surface)}
+.theme{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:13px;color:var(--mfg)}.theme select{height:32px;font-size:13px;width:100%}
 """
 
 def _legacy_css():
@@ -178,7 +266,7 @@ SCRIPT = """<script>
 (()=>{const k='ff_user';const box=document.getElementById('who');let v='';try{v=localStorage.getItem(k)||''}catch(e){}
 if(box){box.value=v;box.addEventListener('change',()=>{try{localStorage.setItem(k,box.value.trim())}catch(e){}})}
 for(const f of document.querySelectorAll('form'))f.addEventListener('submit',e=>{let u=(box&&box.value.trim())||'';
- if(f.dataset.who==='need'&&!u){e.preventDefault();alert('Type your name at the bottom left first: this step is recorded against a person.');box&&box.focus();return}
+ if(f.dataset.who==='need'&&!u){e.preventDefault();alert('Type your name in the box on the left first: this step is recorded against a person.');box&&box.focus();return}
  let h=f.querySelector('input[name=user]');if(!h){h=document.createElement('input');h.type='hidden';h.name='user';f.appendChild(h)}h.value=u;
  const b=f.querySelector('button[data-busy]');if(b){b.disabled=true;b.textContent=b.dataset.busy}});
 for(const t of document.querySelectorAll('[data-all]'))t.addEventListener('change',()=>{for(const c of document.querySelectorAll('input[name='+t.dataset.all+']'))c.checked=t.checked});
@@ -187,28 +275,127 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
  if(busy)setTimeout(tick,2000);else location.reload()};setTimeout(tick,+r*1000)}
 })();</script>"""
 
-NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
+NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"), ("/gst", "4", "GST annual return"),
        None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), ("/partner", "", "Partner review")]
+NAV_CLASSIC = [i for i in NAV if not (i and i[0] == "/gst")] + [None, ("/gst", "", "GST annual returns")]
 MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
-def shell(title, body, active="", msg="", refresh=0):
+def _has_gst():
+    try:
+        import ff_gst  # noqa: F401  (the GST annual returns screen, where it is installed)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def nav_counts():
+    """Small counts under the menu items: {href: (text, needs a person)}. Never stops a page from showing."""
+    out = {}
+    try:
+        jobs = ff_jobs.load()["jobs"]
+        failed = sum(1 for j in jobs if j["status"] == "failed")
+        stopped = sum(1 for j in jobs if j["status"] in ("failed", "staff"))
+        try:
+            stopped += sum(1 for j in filing_queue.load()["jobs"] if j.get("status") == "held")
+        except Exception:  # noqa: BLE001
+            pass
+        review = ready = 0
+        for d in clients():
+            if app.load(d).get("verified"):  # the saved tick: cheap enough to count on every page
+                ready += 1
+            elif (d / ff_fin.out_name(d)).exists():
+                review += 1
+        if failed:
+            out["/data"] = (f"{failed} failed", True)
+        if review:
+            out["/review"] = (f"{review} to review", False)
+        if ready:
+            out["/file"] = (f"{ready} verified", False)
+        if stopped:
+            out["/agents"] = (f"{stopped} stopped", True)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+# ---------------------------------------------------------------- themes
+# Two looks for the same screens. The choice is kept in theme.json beside the app, so it holds for everyone on the LAN.
+THEMES = [("paper-green", "Paper and green (new)"), ("ink-brass", "Ink and brass (old)")]
+THEME_FILE = app.ROOT / "theme.json"
+
+
+def theme():
+    try:
+        t = json.loads(THEME_FILE.read_text(encoding="utf-8")).get("theme")
+        return t if t in dict(THEMES) else THEMES[0][0]
+    except Exception:  # noqa: BLE001
+        return THEMES[0][0]
+
+
+def set_theme(name):
+    if name in dict(THEMES):
+        THEME_FILE.write_text(json.dumps({"theme": name}), encoding="utf-8")
+
+
+def _theme_picker(active):
+    now = theme()
+    opts = "".join(f"<option value=\"{k}\"{' selected' if k == now else ''}>{esc(t)}</option>" for k, t in THEMES)
+    return (f"<form class=theme method=get action=/theme><input type=hidden name=back value=\"{esc(active or '/data')}\">"
+            f"<label for=theme>Theme</label><select id=theme name=name onchange=\"this.form.submit()\">{opts}</select></form>")
+
+
+def _shell_classic(title, body, active="", msg="", refresh=0):
     nav = []
-    for item in NAV:
+    for n, item in enumerate(NAV_CLASSIC):
         if item is None:
+            if n + 1 < len(NAV_CLASSIC) and NAV_CLASSIC[n + 1][0] == "/gst" and not _has_gst():
+                continue
             nav.append("<div class=gap></div>")
             continue
         href, k, name = item
+        if href == "/gst" and not _has_gst():
+            continue
         nav.append(f"<a class=\"nv{' on' if href == active else ''}\" href=\"{href}\">"
                    f"{f'<span class=k>{k}</span>' if k else '<span class=k style=border:0></span>'}{name}</a>")
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>{esc(title)} · Form Filler</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
+<style>{_legacy_css()}{CSS_CLASSIC}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
 <aside><a class=brand href="/data">MCA automation<small>Form Filler · N K Lodha &amp; Co</small></a>
 {''.join(nav)}
 <div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div>
+{_theme_picker(active)}
 <label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Recorded on approvals"></label></aside>
+<main>{f'<div class=msg role=status>{esc(msg)}</div>' if msg else ''}{body}</main>{SCRIPT}</body></html>"""
+
+
+
+def shell(title, body, active="", msg="", refresh=0):
+    if theme() == "ink-brass":
+        return _shell_classic(title, body, active, msg, refresh)
+    nav = ["<div class=grp>Steps</div>"]
+    counts = nav_counts()
+    gst = _has_gst()
+    for item in NAV:
+        if item is None:
+            nav.append("<div class=gap></div><div class=grp>Tools and records</div>")
+            continue
+        href, k, name = item
+        if href == "/gst" and not gst:
+            continue
+        hint, alert = counts.get(href, ("", False))
+        sub = f"<small{' class=at' if alert else ''}>{esc(hint)}</small>" if hint else ""
+        nav.append(f"<a class=\"nv{' on' if href == active else ''}\" href=\"{href}\">"
+                   f"<span class=\"k{'' if k else ' none'}\">{k}</span><span class=nm>{name}{sub}</span></a>")
+    return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>{esc(title)} · Form Filler</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap">
+<style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
+<aside><a class=brand href="/data">Form Filler<small>N K Lodha &amp; Co{' · ' + esc(fy_label()) if fy_label() else ''}</small></a>
+<label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Type your name"><small>Recorded on every approval and override.</small></label>
+{''.join(nav)}
+<div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}{_theme_picker(active)}</div></aside>
 <main>{f'<div class=msg role=status>{esc(msg)}</div>' if msg else ''}{body}</main>{SCRIPT}</body></html>"""
 
 
@@ -419,7 +606,7 @@ def page_review(name="", tab="", msg=""):
             return ""
         rows_ = "".join(f"<div class=pt><div class=pth><span class=ptn>{start + k}</span><b>{esc(p['text'])}</b></div>{det}<div>{act}</div></div>"
                         for k, (p, det, act) in enumerate(items))
-        return f"<div class=ptsec><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
+        return f"<div class=\"ptsec {'fix' if title.startswith('Fix') else 'read'}\"><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
     pts_html = [
         ("<div class=wait style=\"margin-bottom:12px\"><b>The figures are being rebuilt.</b> These points will refresh when it finishes; the tick is off until then.</div>" if busy else ""),
         _sec("Fix first", "These change the figures or the forms. Work from the top: a later point often clears itself once an earlier one is fixed.", fix, 1),
@@ -1037,6 +1224,11 @@ def handle_get(path, query):
     """(status, body, content type) or None."""
     q = {k: v[0] for k, v in query.items()}
     msg = q.get("msg", "")
+    if path == "/theme":  # switch the look (kept in theme.json), then return to the page it was picked on
+        set_theme(q.get("name", ""))
+        back = q.get("back", "/data")
+        back = back if re.fullmatch(r"/[a-z0-9]*", back) else "/data"
+        return 200, f"<!doctype html><meta http-equiv=refresh content=\"0;url={back}\"><a href=\"{back}\">Continue</a>", "text/html"
     if path in ("/", "/data"):
         return 200, page_data(msg), "text/html"
     if path == "/review":
@@ -1050,6 +1242,9 @@ def handle_get(path, query):
     if path == "/partner":  # partner review: time by hand against time by tool (ff_partner.py)
         import ff_partner
         return 200, ff_partner.page(msg, q.get("names") == "1"), "text/html"
+    if (path == "/gst" or path.startswith("/gst/")) and _has_gst():  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_get(path, q)
     if path == "/filings":
         return 200, app.home(msg), "text/html"
     if path == "/ff/api/tally":
@@ -1075,6 +1270,9 @@ def handle_get(path, query):
 
 def handle_post(path, query, body, form):
     """(status, body, content type, location or None) or None."""
+    if path.startswith("/gst/") and _has_gst():  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_post(path, {k: v[0] for k, v in query.items()}, body, form)
     if not path.startswith("/ff/"):
         return None
     q = {k: v[0] for k, v in query.items()}
