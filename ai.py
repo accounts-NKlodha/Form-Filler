@@ -261,6 +261,10 @@ def run(name):
         qs, _ = app.questions(folder)
         if not qs:
             raise ValueError("no questions yet: click Prepare questions in step 3 first")
+        asked_all = len(qs)
+        qs = [q for q in qs if not str(q[3] or "").strip()]  # only the inputs still open go to the model, with the passages that match them
+        if not qs:
+            raise ValueError(f"all {asked_all} inputs already have an answer: nothing to ask the local AI")
         passages = chunks(folder)
         if not passages:
             raise ValueError("no PDFs in the client folder to read (upload last year's filed forms first)")

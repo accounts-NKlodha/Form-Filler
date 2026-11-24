@@ -632,7 +632,8 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
             trs.append(f"<tr><td style=\"width:50%\">{esc(text)}<div class=mut>{esc(how)}</div></td><td>{field}</td><td>{t}</td></tr>")
         return (f"<form method=post action=/ff/answers><input type=hidden name=c value=\"{esc(name)}\">"
                 f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div>"
-                f"<p class=row><a class=btn href=\"/ai/questions?c={q}\">Suggest answers with local AI</a> <button class=sm data-busy=Saving>Save answers</button></p>"
+                f"<p class=row><button class=sm formaction=/ai/run formmethod=post data-busy=Starting>Suggest answers with local AI</button> <button class=sm data-busy=Saving>Save answers</button> "
+                f"<span class=mut>The AI starts at once and is asked only the inputs still blank. Save typed answers first.</span></p>"
                 f"<table>{''.join(trs)}</table>"
                 f"<p class=row><button class=sm data-busy=Saving>Save answers</button></p></form>")
     if tab == "reports":
