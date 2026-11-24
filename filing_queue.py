@@ -88,7 +88,7 @@ def pending(folder, slug):
     have = attachment_files(folder, slug)
     out = []
     for el, title, must, _ in ATTACH.get(slug, []):
-        if must and el not in have:
+        if must and el not in have and el == ff_signed.SLOT:  # the photo for MGT-7A sits on its first page: that one still blocks
             why = ""
             if el == ff_signed.SLOT:
                 try:
@@ -141,6 +141,10 @@ def problems(client, slug):
                 out.append(f"{len(errs)} data errors in the inputs")
         except Exception as e:  # noqa: BLE001
             out.append(str(e))
+    have = attachment_files(folder, slug)
+    for el, title, must, _ in ATTACH.get(slug, []):
+        if must and el not in have and el != ff_signed.SLOT:
+            out.append(f"attachment missing: {title}")
     return out
 
 
@@ -301,6 +305,7 @@ def plan(slug):
                        f"but this tab is {app.FORM_LABEL.get(slug, slug)}. Open that form, or pause the queue in the app")
         e.can_switch = any(x["slug"] == slug and x["status"] in ("queued", "held") for x in q["jobs"])
         e.other = app.FORM_LABEL.get(j["slug"], j["slug"])
+        e.same_client = any(x["slug"] == slug and x["status"] in ("queued", "held") and x["client"] == j["client"] for x in q["jobs"])
         raise e
     m = app._mca()
     folder = app.folder_of(j["client"])

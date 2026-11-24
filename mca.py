@@ -1037,7 +1037,8 @@ class Handler(BaseHTTPRequestHandler):
                 qp = app._queue().plan(slug)
             except Exception as e:  # noqa: BLE001
                 return self._json(409, {"error": str(e), "canSwitch": bool(getattr(e, "can_switch", False)),
-                                        "other": getattr(e, "other", ""), "slug": slug})
+                                        "other": getattr(e, "other", ""), "slug": slug,
+                                        "sameClient": bool(getattr(e, "same_client", False))})
             if qp:
                 return self._json(200, qp)
             active = state().get("active")

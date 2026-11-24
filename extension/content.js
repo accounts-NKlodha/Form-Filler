@@ -134,6 +134,17 @@
     if (!r.ok) {
       let msg = r.error || r.text || ('HTTP ' + r.status), info = {};
       try { info = JSON.parse(r.text) || {}; msg = info.error || msg; } catch (e) { /* plain text */ }
+      if (info.canSwitch && info.sameClient) {
+        // The same client's other form is open in this tab: take it up straight away, no question.
+        // The form that was being filled goes back to waiting; its draft stays saved on the portal.
+        status(`This tab is <b>${esc((info.slug || '').toUpperCase())}</b>: filling it now. The ${esc(info.other)} draft stays saved and is taken up afterwards.`);
+        const s = await server('/queue/switch', { slug: info.slug });
+        if (!s.ok) { status('Could not switch: ' + esc(s.error || s.text), [['Close', close]]); return; }
+        const again = await server('/plan?slug=' + encodeURIComponent(slug()));
+        if (again.ok) return doFill();
+        status('Could not get the plan after switching: ' + esc(again.error || again.text || ''), [['Close', close]]);
+        return;
+      }
       if (info.canSwitch) {
         // Not an error: staff opened another queued form. Offer to fill this one now; the other waits its turn.
         status(`The queue is filling <b>${esc(info.other)}</b>, and this tab is <b>${esc((info.slug || '').toUpperCase())}</b>.<br>` +
