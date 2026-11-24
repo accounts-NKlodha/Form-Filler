@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app
+import ff_signed
 
 QUEUE = app.ROOT / "queue.json"
 DONE = ("submitted", "skipped", "saved")
@@ -68,9 +69,33 @@ def attachment_files(folder, slug):
     out = {}
     for el, _, _, _ in ATTACH.get(slug, []):
         d = Path(folder) / ATTACH_DIR / el
+        if el == ff_signed.SLOT:  # signed set from the client's signed folder; an MCA form PDF is never attached
+            try:
+                path, _ = ff_signed.attachment(folder, d)
+            except Exception:  # noqa: BLE001  a damaged PDF must not take the screens down
+                path = None
+            if path:
+                out[el] = path
+            continue
         files = sorted(p for p in d.glob("*") if p.is_file()) if d.exists() else []
         if files:
             out[el] = files[-1]
+    return out
+
+
+def pending(folder, slug):
+    """Mandatory attachments not there yet: the form is filled and saved up to the last page, which waits for them."""
+    have = attachment_files(folder, slug)
+    out = []
+    for el, title, must, _ in ATTACH.get(slug, []):
+        if must and el not in have:
+            why = ""
+            if el == ff_signed.SLOT:
+                try:
+                    why = ff_signed.attachment(folder, Path(folder) / ATTACH_DIR / el)[1]
+                except Exception as e:  # noqa: BLE001
+                    why = f"signed PDF could not be read: {str(e)[:80]}"
+            out.append((el, title, why))
     return out
 
 
@@ -87,6 +112,9 @@ def store_attachment(folder, el, filename, data):
         raise ValueError("attach a PDF, JPG or PNG")
     dest = d / f"{slot[1][3]}{ext}"
     dest.write_bytes(data)
+    if el == ff_signed.SLOT and ext == ".pdf" and ff_signed.is_mca_form(dest):
+        app._move_aside(folder, dest)
+        raise ValueError("this PDF is an MCA form (for example last year's AOC-4), not the signed financial statements: it was not kept")
     return dest
 
 
@@ -113,10 +141,6 @@ def problems(client, slug):
                 out.append(f"{len(errs)} data errors in the inputs")
         except Exception as e:  # noqa: BLE001
             out.append(str(e))
-    have = attachment_files(folder, slug)
-    for el, title, must, _ in ATTACH.get(slug, []):
-        if must and el not in have:
-            out.append(f"attachment missing: {title}")
     return out
 
 
@@ -303,6 +327,10 @@ def plan(slug):
         if f and path:
             p["attachments"].append({"code": f["code"], "key": f["key"], "domBase": f["domBase"], "som": f["som"], "label": f["label"],
                                      "kind": el, "file": path.name, "url": f"/queue/file?job={j['id']}&el={el}"})
+    # Mandatory attachments not there yet: the tool fills and saves every page before them, then holds this form
+    # as "last page pending" and goes on to the next client.
+    p["pendingAttachments"] = [{"domBase": by_name[el]["domBase"], "label": by_name[el]["label"], "title": title.split("(")[0].strip()}
+                               for el, title, _ in pending(folder, slug) if by_name.get(el)]
     return p
 
 

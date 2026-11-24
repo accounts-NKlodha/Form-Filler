@@ -187,7 +187,7 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
 })();</script>"""
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
-       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail")]
+       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), ("/partner", "", "Partner review")]
 MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
@@ -636,13 +636,30 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
                    else f"<p class=mut>Not ready: {esc(why)}. Last year's documents go in <code>financials\\{esc(ff_fin.fy_of(folder))}\\last_year_docs</code> "
                         f"(notice.docx, board report.docx, auditors report.docx, sap.docx, Shareholders list.xlsx, Directors list.xlsx).</p>")
                 + (f"<p><b>Drafted</b></p><ul>{lst}</ul>" if made else "")
-                + (f"<p><b>To check before signing</b></p><ul>{fl}</ul>" if fl else ""))
+                + (f"<p><b>To check before signing</b></p><ul>{fl}</ul>" if fl else "") + _signed_box(folder))
     if tab == "preview":
         return _preview(folder)
     return ""
 
 
 SRC_WORD = {"tally": "Tally", "lastyear": "Last year's form", "staff": "Typed by staff", "ai": "Local AI, confirmed by staff", "auto": "Worked out"}
+
+
+def _signed_box(folder):
+    import ff_signed
+    st = ff_signed.state(folder)
+    path, note = None, ""
+    try:
+        path, note = ff_signed.attachment(folder, folder / filing_queue.ATTACH_DIR / ff_signed.SLOT)
+    except Exception as e:  # noqa: BLE001
+        note = f"signed PDF could not be read: {str(e)[:80]}"
+    lst = "".join(f"<li>{esc(n)}</li>" for n in st["signed"])
+    bad = "".join(f"<li>{esc(n)}: an MCA form, left out</li>" for n in st["rejected"])
+    return (f"<div class=sec>After signing</div><p>Print or convert the drafts and the financial statements, get them signed, and save the signed PDF in "
+            f"<code>{esc(st['dir'])}</code> (or upload it on the Documents tab). The filing queue attaches it on MCA. "
+            f"Name the files so the order is clear: financial statements, auditor's report, board's report, notice.</p>"
+            + (f"<p><b>In the signed folder</b></p><ul>{lst}{bad}</ul>" if lst or bad else "")
+            + f"<p>{tag('Ready to attach on MCA', 'good') if path else tag('Last page will stay pending', 'need')} <span class=mut>{esc(note)}</span></p>")
 
 
 def _preview(folder):
@@ -731,6 +748,9 @@ def page_file(form="all", msg=""):
             if not j or st == "":
                 why = filing_queue.problems(d.name, s)
                 portal = tag("Ready to file", "good") if not why else tag("Not ready", "need") + "".join(f"<div class=mut>{esc(w)}</div>" for w in why)
+                if not why:
+                    portal += "".join(f"<div class=mut>Last page will stay pending: {esc(t.split('(')[0].strip().lower())} ({esc(n or 'not uploaded')})</div>"
+                                      for _, t, n in filing_queue.pending(d, s))
                 have = filing_queue.attachment_files(d, s)
                 for el, title, must, _ in filing_queue.ATTACH.get(s, []):
                     if el not in have and must:
@@ -1021,6 +1041,9 @@ def handle_get(path, query):
         return 200, page_agents(q.get("show", "all"), msg, q.get("q", "jobs")), "text/html"
     if path == "/audit":
         return 200, page_audit(q.get("c", ""), q.get("f", ""), q.get("cat", "all"), msg), "text/html"
+    if path == "/partner":  # partner review: time by hand against time by tool (ff_partner.py)
+        import ff_partner
+        return 200, ff_partner.page(msg, q.get("names") == "1"), "text/html"
     if path == "/filings":
         return 200, app.home(msg), "text/html"
     if path == "/ff/api/tally":
@@ -1052,6 +1075,9 @@ def handle_post(path, query, body, form):
     user = (form.get("user") or "").strip()
     name = form.get("c") or q.get("c") or ""
     lists = form.get("_lists", {})
+    if path.startswith("/ff/partner/"):
+        import ff_partner
+        return ff_partner.post(path, form, user)
     try:
         if path == "/ff/doc/upload":
             folder = app.folder_of(name)
@@ -1119,8 +1145,18 @@ def handle_post(path, query, body, form):
         if path == "/ff/verify":
             folder = app.folder_of(name)
             ff_fin.verify(folder, user)
+            docs_msg = ""
+            try:  # review blocks are cleared: draft the full set for signing straight away
+                ok, why = ff_fin.docs_ready(folder)
+                if ok:
+                    ff_jobs.add(folder.name, "docs", user or "agent")
+                    docs_msg = " Board's report, Auditor's report and notice are being drafted for signing (Reports and meetings tab)."
+                else:
+                    docs_msg = f" Documents for signing not drafted yet: {why}."
+            except Exception:  # noqa: BLE001
+                pass
             nxt = next((d.name for d in clients() if ff_fin.output(d) and not ff_fin.verified(d)), "")
-            return _back("/review", f"{folder.name} ticked verified, okay to file." + (f" Next: {nxt}." if nxt else " Every client is ticked."), c=nxt or folder.name)
+            return _back("/review", f"{folder.name} ticked verified, okay to file." + docs_msg + (f" Next: {nxt}." if nxt else " Every client is ticked."), c=nxt or folder.name)
         if path == "/ff/unverify":
             folder = app.folder_of(name)
             ff_fin.unverify(folder, user)

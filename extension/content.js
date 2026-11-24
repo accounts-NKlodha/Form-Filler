@@ -252,6 +252,18 @@
       }
       force = true;  // uploads handled here, so skip the "attach first" prompt
     }
+    // Signed files not in the client's signed folder yet: everything before this page is filled and saved.
+    // Hold the form as "last page pending" and go on to the next client; nothing is typed on this page.
+    if ((plan.pendingAttachments || []).length && plan.watchSubmit && !stopLoop) {
+      const ps = await page('attachState', { list: plan.pendingAttachments });
+      const wait = plan.pendingAttachments.filter((a, i) => Array.isArray(ps) && ps[i] === 'empty');
+      if (wait.length) {
+        const note = 'Last page pending: ' + wait.map(a => a.title).join('; ') + ' not in the signed folder';
+        status(`<b>${esc(plan.client)}</b>: every page before this one is filled and saved.<br>${esc(note)}.<br><small>Save the signed PDF in the client's signed folder, then Fill again from the app.</small>`);
+        await queueNext(plan, 'held', '', {}, note);
+        return;
+      }
+    }
     if (!force) {
       const missing = await page('uploadsMissing');
       if (Array.isArray(missing) && missing.length) {
@@ -369,8 +381,8 @@
     let a = null;
     try { a = JSON.parse(adv.text); } catch (e) { /* below */ }
     if (!a || a.error) { status('Could not move the queue on: ' + esc((a && a.error) || adv.error || ''), [['Close', close]]); return; }
-    if (!a.next) { status(`<b>${esc(plan.client)}</b>: ${esc(outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>The queue is finished or paused. Review the SRNs in the app before payment.`, [['Close', close]]); return; }
-    status(`<b>${esc(plan.client)}</b>: ${esc(outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>Next: <b>${esc(a.name)}</b> (${a.left} more waiting)… <small>(Alt+Shift+X stops)</small>`);
+    if (!a.next) { status(`<b>${esc(plan.client)}</b>: ${esc(outcome === 'held' && note ? note : outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>The queue is finished or paused. Review the SRNs in the app before payment.`, [['Close', close]]); return; }
+    status(`<b>${esc(plan.client)}</b>: ${esc(outcome === 'held' && note ? note : outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>Next: <b>${esc(a.name)}</b> (${a.left} more waiting)… <small>(Alt+Shift+X stops)</small>`);
     setTimeout(() => {
       if (stopLoop) { status('Stopped before the next client.', [['Close', close]]); return; }
       try { sessionStorage.setItem('mcafill_autorun', JSON.stringify({ t: Date.now(), name: a.name, left: a.left })); } catch (e) { /* ignore */ }

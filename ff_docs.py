@@ -18,6 +18,7 @@ from pathlib import Path
 import app
 import ff_audit
 import ff_fin
+import ff_signed
 import filing_queue
 import lastyear
 
@@ -51,6 +52,15 @@ def checklist(folder):
     for s in forms:
         have = filing_queue.attachment_files(folder, s)
         for el, title, must, _ in filing_queue.ATTACH.get(s, []):
+            if el == ff_signed.SLOT:
+                slot = folder / filing_queue.ATTACH_DIR / el
+                old = sorted(p for p in slot.glob("*") if p.is_file() and p.name != ff_signed.MERGED) if slot.exists() else []
+                sd = ff_signed.signed_dir(folder)
+                add("signed", "Signed set for MCA: financial statements, Auditor's report, Board's report, AGM notice (PDF)",
+                    "Kept in the client's signed folder. One PDF is attached as it is; several are joined in that order. "
+                    "Until it is here, the form is filled and saved up to the last page only",
+                    "must", sorted(p for p in sd.glob("*.pdf") if p.is_file()) + old, multi=True)
+                continue
             add(f"att_{el}", f"{app.FORM_LABEL.get(s, s)}: {title}", "Uploaded to MCA by the filing queue",
                 "must" if must else "useful", [have.get(el)], accept=".pdf,.jpg,.jpeg,.png")
     # last year
@@ -87,7 +97,19 @@ def upload(folder, kind, filename, data, user=""):
     filename = _safe(filename)
     ext = Path(filename).suffix.lower()
     label = next((r["title"] for r in checklist(folder) if r["kind"] == kind), kind)
-    if kind.startswith("att_"):
+    if kind == "signed":
+        if ext != ".pdf":
+            raise ValueError("expected the signed PDF")
+        if re.search(r"aoc[-_ ]?4|mgt[-_ ]?7", filename, re.I):
+            raise ValueError("this looks like an MCA form: the signed financial statements and reports go here")
+        dest = ff_signed.signed_dir(folder) / filename
+        if dest.exists():
+            app._move_aside(folder, dest)
+        dest.write_bytes(data)
+        if ff_signed.is_mca_form(dest):
+            app._move_aside(folder, dest)
+            raise ValueError("this PDF is an MCA form (for example last year's AOC-4), not the signed financial statements: it was not kept")
+    elif kind.startswith("att_"):
         dest = filing_queue.store_attachment(folder, kind[4:], filename, data)
     elif kind == "ly_aoc4":
         dest = folder / app.upload(folder.name, "ly_aoc4", filename, data)["saved"]
