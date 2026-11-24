@@ -277,6 +277,7 @@ if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ff
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"), ("/gst", "4", "GST annual return"),
        None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), ("/partner", "", "Partner review")]
+NAV_CLASSIC = [i for i in NAV if not (i and i[0] == "/gst")] + [None, ("/gst", "", "GST annual returns")]
 MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
@@ -346,8 +347,10 @@ def _theme_picker(active):
 
 def _shell_classic(title, body, active="", msg="", refresh=0):
     nav = []
-    for item in NAV:
+    for n, item in enumerate(NAV_CLASSIC):
         if item is None:
+            if n + 1 < len(NAV_CLASSIC) and NAV_CLASSIC[n + 1][0] == "/gst" and not _has_gst():
+                continue
             nav.append("<div class=gap></div>")
             continue
         href, k, name = item
@@ -1239,6 +1242,9 @@ def handle_get(path, query):
     if path == "/partner":  # partner review: time by hand against time by tool (ff_partner.py)
         import ff_partner
         return 200, ff_partner.page(msg, q.get("names") == "1"), "text/html"
+    if (path == "/gst" or path.startswith("/gst/")) and _has_gst():  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_get(path, q)
     if path == "/filings":
         return 200, app.home(msg), "text/html"
     if path == "/ff/api/tally":
@@ -1264,6 +1270,9 @@ def handle_get(path, query):
 
 def handle_post(path, query, body, form):
     """(status, body, content type, location or None) or None."""
+    if path.startswith("/gst/") and _has_gst():  # GST annual returns (ff_gst.py)
+        import ff_gst
+        return ff_gst.handle_post(path, {k: v[0] for k, v in query.items()}, body, form)
     if not path.startswith("/ff/"):
         return None
     q = {k: v[0] for k, v in query.items()}
