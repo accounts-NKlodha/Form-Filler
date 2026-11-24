@@ -541,9 +541,28 @@ def _review_tab(folder, tab):
         if not st:
             return "<div class=h>No Schedule III workbook yet</div><p>Go to <a href=/data>Get data</a> and get this client's data from Tally.</p>"
         if tab == "notes":
-            items = "".join(f"<tr><td class=n style=\"width:40px\">{n['no']}</td><td>{esc(n['title'])}</td></tr>" for n in st["notes"])
-            return (f"<div class=h>Notes to accounts in {esc(st['file'])}</div><table>{items}</table>"
-                    f"<p class=mut>Open the workbook to read each note in full.</p>")
+            nd = ff_fin.note_drill(folder)
+            items = []
+            for n in st["notes"]:
+                d = nd.get(n["no"])
+                if not d:
+                    items.append(f"<tr><td class=n style=\"width:40px\">{n['no']}</td><td>{esc(n['title'])} <span class=mut>no ledgers in this note</span></td><td></td><td></td></tr>")
+                    continue
+                nl = sum(len(h["ledgers"]) for h in d["heads"])
+                items.append(f"<tr class=\"click dl\" tabindex=0 role=button aria-expanded=false title=\"Show the heads and Tally ledgers in this note\">"
+                             f"<td class=n style=\"width:40px\">{n['no']}</td><td><span class=car aria-hidden=true>&#9656;</span>{esc(n['title'])} "
+                             f"<span class=mut>{nl} ledger{'s' if nl != 1 else ''}</span></td>"
+                             f"<td class=n>{money(d['cy'])}</td><td class=n>{money(d['py'])}</td></tr>")
+                for h in d["heads"]:
+                    items.append(f"<tr class=sub hidden><td></td><td><b>{esc(h['head'])}</b></td><td class=n><b>{money(h['cy'])}</b></td><td class=n><b>{money(h['py'])}</b></td></tr>")
+                    items.append("".join(f"<tr class=sub hidden><td></td><td style=\"padding-left:28px\">{esc(x['ledger'])} <span class=mut>{esc(x['group'])}</span></td>"
+                                         f"<td class=n>{money(x['cy'])}</td><td class=n>{money(x['py'])}</td></tr>" for x in h["ledgers"]))
+            js = """<script>for(const t of document.querySelectorAll('tr.dl')){const go=()=>{const o=t.getAttribute('aria-expanded')!=='true';
+t.setAttribute('aria-expanded',o);for(let n=t.nextElementSibling;n&&n.classList.contains('sub');n=n.nextElementSibling)n.hidden=!o};
+t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})}</script>""" if nd else ""
+            return (f"<div class=h>Notes to accounts in {esc(st['file'])}</div>"
+                    f"<table><tr><th></th><th>Note</th><th class=n>This year</th><th class=n>Last year</th></tr>{''.join(items)}</table>{js}"
+                    f"<p class=mut>Click a note to see its heads and the Tally ledgers in each. Text notes (policies, ratios, disclosures) and notes with nil balances have no ledgers: read them in the workbook.</p>")
         rows = []
         sheet = "BS" if tab == "bs" else "PL"
         dr = ff_fin.drill(folder)

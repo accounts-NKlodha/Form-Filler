@@ -432,6 +432,46 @@ def drill(folder):
     return app._cached("ffdrill", p, read) or {}
 
 
+def note_drill(folder):
+    """Heads and Tally ledgers behind each note, for the drill-through on the Notes tab.
+
+    {note no: {"cy", "py", "heads": [{"head", "cy", "py", "ledgers": [{"ledger", "group", "cy", "py"}]}]}} in rupees,
+    signed as on the face of the statements. Text notes (policies, disclosures) have no entry."""
+    p = output(folder)
+    st = statements(folder)
+    if not p or not st:
+        return {}
+
+    def read():
+        L = ff_audit.Ledgers(p)
+        if not L.ok:
+            return None
+        sign = {h[1]: h[4] for h in HEAD.values()}
+        res = {}
+        for n in st.get("notes") or []:
+            title = n["title"]
+            line = L.line_of(title) or L.line_of(title.split(" - ")[0])
+            if not line:
+                continue
+            heads = {}
+            for per in ("CY", "PY"):
+                for x in L.for_term(f"BS:{L.line_label[line]}", per)[1]:
+                    code = x.get("code") or ""
+                    h = heads.setdefault(code, {"head": HEAD[code][3] if code in HEAD else "Other", "cy": 0.0, "py": 0.0, "led": {}})
+                    d = h["led"].setdefault(x["ledger"], {"ledger": x["ledger"], "group": x["group"], "cy": 0.0, "py": 0.0})
+                    v = (x["amount"] or 0) * sign.get(line, 1)
+                    d[per.lower()] += v
+                    h[per.lower()] += v
+            if not heads:
+                continue
+            hs = [{"head": h["head"], "cy": h["cy"], "py": h["py"],
+                   "ledgers": sorted(h["led"].values(), key=lambda d: -abs(d["cy"] or d["py"]))} for h in heads.values()]
+            hs.sort(key=lambda h: -abs(h["cy"] or h["py"]))
+            res[n["no"]] = {"cy": sum(h["cy"] for h in hs), "py": sum(h["py"] for h in hs), "heads": hs}
+        return res
+    return app._cached("ffnotes", p, read) or {}
+
+
 # ---------------------------------------------------------------- review points
 
 def inr(x):
