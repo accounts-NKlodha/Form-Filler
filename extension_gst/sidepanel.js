@@ -81,7 +81,7 @@ async function each(kind, periods, ctx, get) {
     }
     await sleep(PACE);
   }
-  run.note[kind] = [saved ? saved + ' filed' : '', skipped ? skipped + ' already there' : '', pending.length ? pending.length + ' being made by the portal' : '', notes.length ? notes.length + ' not read' : ''].filter(Boolean).join(', ') || 'Nothing to read';
+  run.note[kind] = [saved ? saved + ' saved to the folder' : '', skipped ? skipped + ' already in the folder' : '', pending.length ? pending.length + ' being made by the portal' : '', notes.length ? notes.length + ' not read' : ''].filter(Boolean).join(', ') || 'Nothing to read';
   notes.forEach((n) => log(KINDS.find((k) => k[0] === kind)[1] + ', ' + n));
   draw(ctx.months);
   return pending;
