@@ -40,8 +40,9 @@ def g2b(p, c=50, s=50, cn=0, docs=()):
         "docdata": {"b2b": [{"ctin": "33AAAAA0000A1Z5", "inv": list(docs)}]}}}).encode()
 
 
-def g2a(p, c=50, s=50):
-    doc = {"gstin": G, "fp": p, "b2b": [{"ctin": "33AAAAA0000A1Z5", "cfs": "Y", "inv": [{"inum": "1", "itms": [{"itm_det": dict(t(0, c, s), txval=1000)}]}]}]}
+def g2a(p, c=50, s=50, idt=None):
+    doc = {"gstin": G, "fp": p, "b2b": [{"ctin": "33AAAAA0000A1Z5", "cfs": "Y", "inv": [{"inum": "1", "idt": idt or "15-%s-%s" % (p[:2], p[2:]),
+                                                                                         "itms": [{"itm_det": dict(t(0, c, s), txval=1000)}]}]}]}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("returns_R2A.json", json.dumps(doc))
@@ -55,6 +56,7 @@ def year(**over):
         files += [over.get("gstr3b", {}).get(p) or g3b(p), over.get("gstr1_summary", {}).get(p) or g1s(p),
                   over.get("gstr2b", {}).get(p) or g2b(p), g2a(p)]
     files += [over.get("gstr2b", {}).get(p) or g2b(p) for p in portal.next_months(FY)]
+    files += [over.get("gstr2a", {}).get(p) or g2a(p) for p in portal.next_months(FY)]
     return files
 
 
@@ -136,6 +138,12 @@ class Checks(unittest.TestCase):
         r = self.by(year(gstr2b={"042026": g2b("042026", docs=[doc, new])}))["next_year_2b"]
         self.assertEqual((r["state"], r["total_a"], r["rows"][0]["documents"]), ("point", Decimal(14), 1))
 
+    def test_late_supplier_shows_in_next_years_2a(self):
+        r = self.by(year(gstr2a={"082026": g2a("082026", c=30, s=30, idt="28-03-2026")}))["next_year_2a"]
+        self.assertEqual((r["state"], r["total_a"], r["rows"][4]["documents"]), ("point", Decimal(60), 1))
+        files = [f for f in year() if not (portal.read(f)["kind"] == "gstr2a" and portal.read(f)["period"] == "092026")]
+        self.assertEqual(self.by(files)["next_year_2a"]["state"], "needs")
+
     def test_tolerance_is_one_rupee(self):
         r = self.by(year(gstr3b={"042025": g3b("042025", taxable=1000.9)}))["outward_taxable"]
         self.assertEqual(r["state"], "ok")
@@ -206,6 +214,8 @@ class WorkArea(unittest.TestCase):
         self.assertEqual(work.ingest(self.client, G, FY, g2b("052026"), "Asha")["file"], "GST_%s_2026-27_GSTR2B_052026.json" % G)
         self.assertTrue((work.area(self.client, G, FY) / "portal" / "gstr2b_next_year").is_dir())
         self.assertTrue(work.ingest(self.client, G, FY, g2a("042025"), "Asha")["file"].endswith(".zip"))
+        work.ingest(self.client, G, FY, g2a("092026"), "Asha")
+        self.assertTrue((work.area(self.client, G, FY) / "portal" / "gstr2a_next_year").is_dir())
         with self.assertRaises(ValueError):
             work.ingest(self.client, G, FY, g3b("042024"), "Asha")            # another year
         with self.assertRaises(ValueError):

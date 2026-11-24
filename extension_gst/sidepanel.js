@@ -172,7 +172,7 @@ async function go() {
       await each('gstr2b', ctx.months.concat(ctx.next), ctx, summary(tab2b, `${G2B}/gstr2b/auth/api/gstr2b/getjson?rtnprd=`));
     }
     // The portal makes these files on request. Ask once, then look again every minute until they arrive.
-    let wait = { gstr2a: ctx.months, gstr1: ctx.months };
+    let wait = { gstr2a: ctx.months.concat(ctx.next), gstr1: ctx.months };   // late-filing suppliers show in next year's 2A
     const typ = { gstr2a: 'GSTR2A', gstr1: 'GSTR1' };
     for (let round = 0; round <= 30; round++) {
       for (const k of Object.keys(wait)) {

@@ -185,7 +185,7 @@ def _items(doc):
 
 def _g2a(d):
     out = dict(b2b=dict(tax({}), taxable=ZERO, documents=0), notes=dict(tax({}), taxable=ZERO, documents=0),
-               tds=tax({}), tcs=tax({}), suppliers=0)
+               tds=tax({}), tcs=tax({}), suppliers=0, by_fy={})
     sup = set()
     for key, docs, into in (("b2b", "inv", "b2b"), ("b2ba", "inv", "b2b"), ("cdn", "nt", "notes"), ("cdna", "nt", "notes")):
         for s in d.get(key) or []:
@@ -193,9 +193,12 @@ def _g2a(d):
             for doc in s.get(docs) or []:
                 t = _items(doc)
                 sign = -1 if into == "notes" and str(doc.get("ntty", "")).upper() == "C" else 1
+                year = out["by_fy"].setdefault(fy_of(doc.get("idt") or doc.get("nt_dt")), dict(tax({}), taxable=ZERO, documents=0))
                 for k in TAXES + ("taxable",):
                     out[into][k] += sign * t[k]
+                    year[k] += sign * t[k]
                 out[into]["documents"] += 1
+                year["documents"] += 1
     for key in ("tds", "tcs"):
         for r in d.get(key) or []:
             out[key] = add(out[key], tax(r, ("iamt", "camt", "samt", "csamt")))

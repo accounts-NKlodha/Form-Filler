@@ -101,7 +101,8 @@ def run(fy, data):
         out.append(dict(id=cid, area=area, title=title, ref=ref, a_label=la, b_label=lb, rows=rows, total_a=ta, total_b=tb,
                         diff=ta - tb, gaps=len(gaps), state=state, note=note,
                         missing=_missing_text(missing), timing=bool(gaps) and abs(ta - tb) <= TOLERANCE))
-    out.append(_next_year(fy, data))
+    out.append(_next_year(fy, data, "gstr2b"))
+    out.append(_next_year(fy, data, "gstr2a"))
     for c in out:
         c["sig"] = _sig(c)
     return out
@@ -117,25 +118,28 @@ def _missing_text(missing):
     return "; ".join("%s: %s" % (k, ", ".join(v) if len(v) < 12 else "all 12 months") for k, v in sorted(kinds.items()))
 
 
-def _next_year(fy, data):
-    """This year's invoices that reached GSTR-2B only in April to October of the next year (tables 8C and 13)."""
+def _next_year(fy, data, kind):
+    """This year's invoices that reached GSTR-2B (or GSTR-2A) only in April to October of the next year (tables 8C and 13).
+    A supplier who files late can still report this year's invoice in a return of the next year."""
     rows, missing = [], []
     for p in next_months(fy):
-        f = (data.get("gstr2b") or {}).get(p)
+        f = (data.get(kind) or {}).get(p)
         if f is None:
-            missing.append((p, [LABEL["gstr2b"]]))
+            missing.append((p, [LABEL[kind]]))
             continue
         t = (f.get("by_fy") or {}).get(fy) or {}
         amount = sum((t.get(k, ZERO) for k in TAXES), ZERO)
         rows.append(dict(period=p, month=month_name(p), a=amount, b=ZERO, diff=amount, documents=t.get("documents", 0)))
     ta = sum((r["a"] for r in rows), ZERO)
     state = "needs" if missing else ("point" if abs(ta) > TOLERANCE else "ok")
-    return dict(id="next_year_2b", area="Input tax credit", ref="8C, 13",
-                title="FY %s invoices that reached GSTR-2B in April to October of the next year" % fy,
+    return dict(id="next_year_" + kind[-2:], area="Input tax credit", ref="8C, 13",
+                title="FY %s invoices that reached %s in April to October of the next year" % (fy, LABEL[kind]),
                 a_label="ITC on FY %s documents" % fy, b_label="", rows=rows, total_a=ta, total_b=ZERO, diff=ta,
                 gaps=len([r for r in rows if abs(r["diff"]) > TOLERANCE]), state=state, timing=False,
                 missing=_missing_text(missing),
-                note="If this credit was taken in next year's GSTR-3B it goes in tables 8C and 13; confirm against the books.")
+                note="If this credit was taken in next year's GSTR-3B it goes in tables 8C and 13; confirm against the books." if kind == "gstr2b" else
+                     "Suppliers who filed late. GSTR-2A counts every document, including reverse charge and credit not available; "
+                     "compare with the GSTR-2B line above before taking any of it to table 8C.")
 
 
 def _sig(c):

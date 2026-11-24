@@ -122,7 +122,7 @@ def ingest(client_folder, gstin, fy, raw, user, source="upload"):
     if doc["gstin"] != gstin:
         raise ValueError("This file is for GSTIN %s, not %s." % (doc["gstin"] or "(none)", gstin))
     kind, period = doc["kind"], doc["period"]
-    nxt = period in portal.next_months(fy) and kind != "gstr2a"
+    nxt = period in portal.next_months(fy)
     if period not in portal.months(fy) and not nxt:
         raise ValueError("This %s is for %s, outside FY %s." % (portal.LABEL[kind], portal.month_name(period), fy))
     folder = area(client_folder, gstin, fy) / "portal"
@@ -178,7 +178,7 @@ def coverage(fy, data):
         have = data.get(kind) or {}
         out.append(dict(kind=kind, label=portal.LABEL[kind], months=[(p, p in have) for p in portal.months(fy)],
                         found=sum(1 for p in portal.months(fy) if p in have),
-                        next_found=sum(1 for p in portal.next_months(fy) if p in have) if kind == "gstr2b" else None))
+                        next_found=sum(1 for p in portal.next_months(fy) if p in have) if kind in ("gstr2a", "gstr2b") else None))
     return out
 
 
