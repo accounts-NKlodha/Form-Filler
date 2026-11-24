@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 2
+RULES_VERSION = 3
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -565,10 +565,13 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     for per, shr, sfx in (("CY", shares, "Current"), ("PY", shares_py, "Previous")):
         prof = None
         if fs and shr:
-            try:
-                prof = fs.eval("PL:Profit / (loss) for the period (XI + XIV)", per)
-            except Exception:  # noqa: BLE001
-                prof = None
+            # The statement names this line differently when there are no discontinuing operations.
+            for line in ("PL:Profit / (loss) for the period (XI + XIV)", "PL:Profit for the year (V - VI)"):
+                try:
+                    prof = fs.eval(line, per)
+                    break
+                except Exception:  # noqa: BLE001
+                    prof = None
         if prof is not None and shr:
             eps = f"{prof / shr:.2f}"
             for n in (37, 38, 40, 41):
