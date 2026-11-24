@@ -65,14 +65,15 @@ async function tabOn(origin) {
 
 // Month by month for one kind of return. `get(p)` returns {body} to hand over, {skip: why} or {stop: why}.
 async function each(kind, periods, ctx, get) {
-  let saved = 0, skipped = 0; const notes = [];
+  let saved = 0, skipped = 0; const notes = []; const pending = [];
   for (const p of periods) {
     if (!past(p)) continue;
     if (!ctx.again && (run.have[kind] || []).includes(p)) { skipped++; continue; }
     run.note[kind] = 'Reading ' + mname(p) + '...'; draw(ctx.months);
     const got = await get(p);
-    if (got.stop) { run.note[kind] = got.stop; draw(ctx.months); return false; }
-    if (got.skip) notes.push(mname(p) + ': ' + got.skip);
+    if (got.stop) { run.note[kind] = got.stop; draw(ctx.months); return null; }
+    if (got.pending) pending.push(p);
+    else if (got.skip) notes.push(mname(p) + ': ' + got.skip);
     for (const body of got.bodies || []) {
       const j = await hand(body, ctx);
       if (j.error) notes.push(mname(p) + ': ' + j.error);
@@ -80,10 +81,10 @@ async function each(kind, periods, ctx, get) {
     }
     await sleep(PACE);
   }
-  run.note[kind] = [saved ? saved + ' filed' : '', skipped ? skipped + ' already there' : '', notes.length ? notes.length + ' not read' : ''].filter(Boolean).join(', ') || 'Nothing to read';
+  run.note[kind] = [saved ? saved + ' filed' : '', skipped ? skipped + ' already there' : '', pending.length ? pending.length + ' being made by the portal' : '', notes.length ? notes.length + ' not read' : ''].filter(Boolean).join(', ') || 'Nothing to read';
   notes.forEach((n) => log(KINDS.find((k) => k[0] === kind)[1] + ', ' + n));
   draw(ctx.months);
-  return true;
+  return pending;
 }
 const summary = (tab, path) => async (p) => {
   const r = await inPage(tab, path + p);
@@ -98,7 +99,7 @@ const offline = (tab, typ) => async (p) => {
   if (loggedOut(r)) return { stop: 'The portal session has ended. Log in again and press Read the year.' };
   const j = parse(r.text);
   const urls = j && j.data && Array.isArray(j.data.url) ? j.data.url.filter((u) => /^https:\/\/files\.gst\.gov\.in\//.test(u)) : [];
-  if (!urls.length) return { skip: 'asked the portal to make the file; press Read the year again in 20 minutes' };
+  if (!urls.length) return { pending: true };
   const bodies = [];
   for (const u of urls) {
     try {
@@ -160,15 +161,29 @@ async function go() {
     run.have = s.json.have; draw(ctx.months);
     state(`Reading FY ${fy} for ${s.json.client} (${gstin}). Keep the portal tab open.`);
     alive(tab);
-    if (!await each('gstr3b', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr3b/summary?rtn_prd=`))) return;
-    if (!await each('gstr1_summary', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr1/summary?rtn_prd=`))) return;
+    if (await each('gstr3b', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr3b/summary?rtn_prd=`)) === null) return;
+    if (await each('gstr1_summary', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr1/summary?rtn_prd=`)) === null) return;
     const tab2b = await tabOn(G2B);
     if (!tab2b) { run.note.gstr2b = 'Open GSTR-2B once (step 2 above), then read again'; draw(ctx.months); }
     else {
       await each('gstr2b', ctx.months.concat(ctx.next), ctx, summary(tab2b, `${G2B}/gstr2b/auth/api/gstr2b/getjson?rtnprd=`));
     }
-    if (!await each('gstr2a', ctx.months, ctx, offline(tab, 'GSTR2A'))) return;
-    if (!await each('gstr1', ctx.months, ctx, offline(tab, 'GSTR1'))) return;
+    // The portal makes these files on request. Ask once, then look again every minute until they arrive.
+    let wait = { gstr2a: ctx.months, gstr1: ctx.months };
+    const typ = { gstr2a: 'GSTR2A', gstr1: 'GSTR1' };
+    for (let round = 0; round <= 30; round++) {
+      for (const k of Object.keys(wait)) {
+        if (!wait[k].length) continue;
+        const left = await each(k, wait[k], Object.assign({}, ctx, { again: ctx.again && round === 0 }), offline(tab, typ[k]));
+        if (left === null) return;
+        wait[k] = left;
+      }
+      const n = wait.gstr2a.length + wait.gstr1.length;
+      if (!n) break;
+      if (round === 30) { state(`${n} file(s) are still being made by the portal after 30 minutes. Press Read the year again later.`); return; }
+      state(`Waiting for the portal to make ${n} file(s). Looking again every minute (${round + 1} of 30). Keep this panel and the portal tab open.`);
+      await sleep(60000);
+    }
     state(`Done for ${s.json.client}. Open the GST page of Form Filler to see the checks.`);
   } catch (e) {
     state('Stopped: ' + (e && e.message || e)); log(String(e && e.stack || e));
@@ -182,7 +197,7 @@ function alive(tab) {
   aliveUntil = Date.now() + 40 * 60 * 1000;
   aliveTimer = setInterval(async () => {
     if (Date.now() > aliveUntil || !$('alive').checked) return clearInterval(aliveTimer);
-    if (!busy) { try { await inPage(tab, RET + '/services/api/ustatus'); } catch (e) { clearInterval(aliveTimer); } }
+    { try { await inPage(tab, RET + '/services/api/ustatus'); } catch (e) { clearInterval(aliveTimer); } }
   }, 60000);
 }
 
