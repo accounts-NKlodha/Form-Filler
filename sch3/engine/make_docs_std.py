@@ -80,6 +80,8 @@ def pick(d, *prefixes):
 def main(cfg_path, xlsx, ly, out):
     cfg = json.load(open(cfg_path)); D = cfg["docs"]; S = cfg["setup"]
     st, pl, notes, rp = load(xlsx)
+    for k, v in (S or {}).items():  # typed in the app after the workbook was built
+        if v not in (None, "") and st.get(k) in (None, ""): st[k] = v
     blank = sorted(k for k in ("Registered office address", "Signing director 1 name", "Signing director 2 name") if not st.get(k))
     st = _Setup(st)
     if blank: FLAGS.append("Blank in Setup, so left empty in the reports: " + ", ".join(blank) + ". Fill them and generate again.")

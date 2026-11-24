@@ -333,6 +333,11 @@ DOC_FIELDS = [  # key, label, hint, default, required
     ("ly_udins", "UDIN on last year's Auditor's report", "replaced by a blank for this year's UDIN", "", False),
     ("audit_trail", "Accounting software audit trail (edit log)", "used / not used", "used", False),
 ]
+SETUP_FIELDS = [  # kept in cfg "setup" under the same names the Schedule III workbook uses
+    ("Registered office address", "Registered office address", "as on the MCA master data"),
+    ("Signing director 1 name", "Signing director 1 (name)", "signs the financial statements and the Board's report"),
+    ("Signing director 2 name", "Signing director 2 (name)", ""),
+]
 _LISTS = ("ly_dates", "ly_list_dates", "ly_udins")
 _DATE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 
@@ -375,6 +380,11 @@ def save_docs(folder, form, user=""):
             v = "used"
         if v or k in d:
             d[k] = v
+    st = cfg.setdefault("setup", {})
+    for i, (k, _l, _h) in enumerate(SETUP_FIELDS):
+        v = (form.get(f"s_{i}") or "").strip()
+        if v:
+            st[k] = v
     d.setdefault("list_date", d["agm_date"])
     d.setdefault("dec", 0)
     cfg["docs"] = d
@@ -394,6 +404,13 @@ def docs_form(folder, ui):
             field = f"<input type=text name=d_{k} value=\"{esc(v[k])}\" placeholder=\"{esc(hint)}\" style=\"width:100%\" aria-label=\"{esc(label)}\">"
         need = ui.tag("Needed", "need") if must and not v[k] else ""
         rows.append(f"<tr><td style=\"width:50%\">{esc(label)}<div class=mut>{esc(hint)}</div></td><td>{field}</td><td>{need}</td></tr>")
+    import ff_fin
+    st = ff_fin.load_cfg(folder).get("setup") or {}
+    for i, (k, label, hint) in enumerate(SETUP_FIELDS):
+        cur = str(st.get(k) or "")
+        rows.append(f"<tr><td style=\"width:50%\">{esc(label)}<div class=mut>{esc(hint)}</div></td>"
+                    f"<td><input type=text name=s_{i} value=\"{esc(cur)}\" style=\"width:100%\" aria-label=\"{esc(label)}\"></td>"
+                    f"<td>{'' if cur else ui.tag('Needed', 'need')}</td></tr>")
     return (f"<details {'open' if not (v['doc_date'] and v['agm_date']) else ''}><summary><b>Details for the reports</b> "
             f"<span class=mut>dates, place and last year's dates to replace</span></summary>"
             f"<form method=post action=/ff/docs/details><input type=hidden name=c value=\"{esc(Path(folder).name)}\">"
