@@ -312,9 +312,89 @@ def gen_box(folder, ui):
             f"<button class=sm data-busy=Generating>Generate financials for signing</button></form> "
             + (f"<form method=post action=/ff/docs/open style=\"display:inline\"><input type=hidden name=c value=\"{c}\">"
                f"<button class=sm>Open folder</button></form>" if files else "") + "</p>"
+            + docs_form(folder, ui) +
             f"<p>Saved in <code>{esc(str(d))}</code>: the Schedule III workbook (Excel, set up for A4 printing: print the BS, PL, Cash Flow and Notes sheets) and the drafted reports (Word). After signing, upload the scanned PDFs below: several are joined into one for MCA.</p>{warn}"
             + (f"<p><a class=btn href=\"/ff/report?c={q}&f={quote(print_name(folder))}&d=sign\">Open the print-ready PDF</a> "
                f"<span class=mut>A4, one file: statements, notes and reports with the signature blocks.</span></p>"
                if (d / print_name(folder)).exists() else "")
             + (f"<ul>{lst}</ul>" if files else "<p class=mut>Nothing generated yet.</p>")
             + "<div style=\"height:16px\"></div>")
+
+
+# ---------------------------------------------------------------- details the drafted reports need (cfg "docs")
+DOC_FIELDS = [  # key, label, hint, default, required
+    ("short", "Company's short name in the reports", "e.g. the Company", "", False),
+    ("doc_date", "Date of the documents (Board's report, Auditor's report, notice)", "DD/MM/YYYY", "", True),
+    ("agm_date", "Date of this year's AGM", "DD/MM/YYYY", "", True),
+    ("agm_time", "Time of the AGM", "e.g. 11:00 A.M.", "11:00 A.M.", False),
+    ("place", "Place of signing", "e.g. Chennai", "Chennai", False),
+    ("ly_dates", "Date printed on last year's documents", "DD/MM/YYYY, comma separated: replaced by this year's date", "", False),
+    ("ly_list_dates", "Date on last year's shareholder and director lists", "DD/MM/YYYY, comma separated", "", False),
+    ("ly_udins", "UDIN on last year's Auditor's report", "replaced by a blank for this year's UDIN", "", False),
+    ("audit_trail", "Accounting software audit trail (edit log)", "used / not used", "used", False),
+]
+_LISTS = ("ly_dates", "ly_list_dates", "ly_udins")
+_DATE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+
+
+def docs_values(folder):
+    import app
+    import ff_fin
+    d = dict(ff_fin.load_cfg(folder).get("docs") or {})
+    out = {}
+    for k, _, _, dflt, _ in DOC_FIELDS:
+        v = d.get(k, dflt)
+        out[k] = ", ".join(v) if isinstance(v, list) else str(v or "")
+    if not out["agm_date"]:  # the AGM date typed on Inputs for the forms
+        try:
+            for key, text, _how, ans, _c in app.questions(folder)[0]:
+                if text.strip().lower() == "date of agm" and _DATE.match(str(ans).strip()):
+                    out["agm_date"] = str(ans).strip()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
+def save_docs(folder, form, user=""):
+    import ff_audit
+    import ff_fin
+    cfg = ff_fin.load_cfg(folder)
+    d = dict(cfg.get("docs") or {})
+    for k, label, _, _, must in DOC_FIELDS:
+        v = (form.get("d_" + k) or "").strip()
+        if k in _LISTS:
+            v = [x.strip() for x in v.split(",") if x.strip()]
+            bad = [x for x in v if k != "ly_udins" and not _DATE.match(x)]
+        else:
+            bad = [v] if k.endswith("_date") and v and not _DATE.match(v) else []
+        if bad:
+            raise ValueError(f"{label}: write the date as DD/MM/YYYY")
+        if must and not v:
+            raise ValueError(f"{label} is needed")
+        if k == "audit_trail" and v not in ("used", "not used"):
+            v = "used"
+        if v or k in d:
+            d[k] = v
+    d.setdefault("list_date", d["agm_date"])
+    d.setdefault("dec", 0)
+    cfg["docs"] = d
+    ff_fin.save_cfg(folder, cfg)
+    ff_audit.event(folder, "docs", "Details for the reports saved (document date, AGM date, place)", by=user or "staff")
+
+
+def docs_form(folder, ui):
+    esc = ui.esc
+    v = docs_values(folder)
+    rows = []
+    for k, label, hint, _, must in DOC_FIELDS:
+        if k == "audit_trail":
+            field = (f"<select name=d_{k} aria-label=\"{esc(label)}\">" + "".join(
+                f"<option {'selected' if o == v[k] else ''}>{o}</option>" for o in ("used", "not used")) + "</select>")
+        else:
+            field = f"<input type=text name=d_{k} value=\"{esc(v[k])}\" placeholder=\"{esc(hint)}\" style=\"width:100%\" aria-label=\"{esc(label)}\">"
+        need = ui.tag("Needed", "need") if must and not v[k] else ""
+        rows.append(f"<tr><td style=\"width:50%\">{esc(label)}<div class=mut>{esc(hint)}</div></td><td>{field}</td><td>{need}</td></tr>")
+    return (f"<details {'open' if not (v['doc_date'] and v['agm_date']) else ''}><summary><b>Details for the reports</b> "
+            f"<span class=mut>dates, place and last year's dates to replace</span></summary>"
+            f"<form method=post action=/ff/docs/details><input type=hidden name=c value=\"{esc(Path(folder).name)}\">"
+            f"<table>{''.join(rows)}</table><p><button class=sm data-busy=Saving>Save details</button></p></form></details>")

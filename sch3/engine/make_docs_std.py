@@ -39,8 +39,19 @@ def load(xlsx):
             if lab and len(nums) >= 2: out.setdefault(lab.strip(), (nums[-2] or 0, nums[-1] or 0))
         return out
     pl, notes = rows("PL"), rows("Notes")
-    rp = [r for r in wb["Related_Parties"].iter_rows(min_row=2, values_only=True) if r[0]]
+    rp = [r for r in wb["Related_Parties"].iter_rows(min_row=2, values_only=True) if r[0]] if "Related_Parties" in wb.sheetnames else []
     return st, pl, notes, rp
+
+
+class _Setup(dict):
+    """Setup values; a blank or missing text row reads as '' so one empty box does not stop the whole document set."""
+    def __getitem__(self, k):
+        v = dict.get(self, k)
+        return "" if v is None else v
+
+    def get(self, k, default=None):
+        v = dict.get(self, k)
+        return default if v is None else v
 
 
 def pick(d, *prefixes):
@@ -53,6 +64,9 @@ def pick(d, *prefixes):
 def main(cfg_path, xlsx, ly, out):
     cfg = json.load(open(cfg_path)); D = cfg["docs"]; S = cfg["setup"]
     st, pl, notes, rp = load(xlsx)
+    blank = sorted(k for k in ("Registered office address", "Signing director 1 name", "Signing director 2 name") if not st.get(k))
+    st = _Setup(st)
+    if blank: FLAGS.append("Blank in Setup, so left empty in the reports: " + ", ".join(blank) + ". Fill them and generate again.")
     os.makedirs(out, exist_ok=True)
     FYE = int(str(st["Current year - balance sheet date"])[-4:]); FY, PFY = f"{FYE-1}-{FYE}", f"{FYE-2}-{FYE-1}"
     CO = st["Company name"]; SHORT = D.get("short", CO)
@@ -62,7 +76,7 @@ def main(cfg_path, xlsx, ly, out):
     BMS = [x.strip() for x in str(st.get("Board meeting dates", "")).split(",") if x.strip()]
     PRES = [x.strip() for x in str(st.get("Directors present at each board meeting", "")).split(",")]
     STRENGTH = str(st.get("Board strength (number of directors)", 2))
-    D1, D2 = st["Signing director 1 name"].upper(), st["Signing director 2 name"].upper()
+    D1, D2 = str(st.get("Signing director 1 name") or "").upper(), str(st.get("Signing director 2 name") or "").upper()
     num = lambda x: ("0.00" if DEC else "0") if not x else inr(x, DEC)
 
     rev, oi = pick(pl, "I. Revenue"), pick(pl, "II. Other income")

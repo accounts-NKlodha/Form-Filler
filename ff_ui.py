@@ -1217,6 +1217,15 @@ def handle_post(path, query, body, form):
             m = app.build(folder)
             ff_audit.event(folder, "questions", f"{n} answers saved", by=user or "staff")
             return _back("/review", f"{n} answers saved. {m}", c=folder.name, tab="questions")
+        if path == "/ff/docs/details":
+            import ff_signed
+            folder = app.folder_of(name)
+            try:
+                ff_signed.save_docs(folder, form, user)
+                m = "Details saved. Press Generate financials for signing to draft the reports."
+            except ValueError as e:
+                m = f"Not saved: {e}"
+            return _back("/review", m, c=folder.name, tab="reports")
         if path == "/ff/docs/generate":
             import ff_signed
             folder = app.folder_of(name)
