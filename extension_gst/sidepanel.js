@@ -164,7 +164,10 @@ async function go() {
     if (await each('gstr3b', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr3b/summary?rtn_prd=`)) === null) return;
     if (await each('gstr1_summary', ctx.months, ctx, summary(tab, `${RET}/returns/auth/api/gstr1/summary?rtn_prd=`)) === null) return;
     const tab2b = await tabOn(G2B);
-    if (!tab2b) { run.note.gstr2b = 'Open GSTR-2B once (step 2 above), then read again'; draw(ctx.months); }
+    const all2b = ctx.months.concat(ctx.next).filter(past);
+    const need2b = all2b.filter((p) => ctx.again || !(run.have.gstr2b || []).includes(p));
+    if (!need2b.length) { run.note.gstr2b = all2b.length + ' already in the folder (12 months and April to October of the next year)'; draw(ctx.months); }
+    else if (!tab2b) { run.note.gstr2b = need2b.length + ' month(s) still to read: open GSTR-2B once (step 2 above), then read again'; draw(ctx.months); }
     else {
       await each('gstr2b', ctx.months.concat(ctx.next), ctx, summary(tab2b, `${G2B}/gstr2b/auth/api/gstr2b/getjson?rtnprd=`));
     }
