@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 14
+RULES_VERSION = 15
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -29,7 +29,7 @@ QUESTIONS = [
     ("holders_all_indian", "Are all shareholders resident Indian individuals?", "Yes / No. Yes: all shares go under Individual, Indian. No: categories as on last year's form",
      lambda f, fs: "Yes"),
     ("directors_changed", "Any change in directors / KMP during the year?", "Yes / No", lambda f, fs: "No"),
-    ("remuneration", "Remuneration to MD / WTD this year (Name = amount; …)", "e.g. A = 900000; B = 900000", lambda f, fs: _rem_default(f, fs)),
+    ("remuneration", "Directors' remuneration this year: Name = amount for each MD / WTD, or Nil", "e.g. A = 900000; B = 900000, or Nil", lambda f, fs: _rem_default(f, fs)),
     ("phone", "Telephone number of the company with STD code (portal needs it)", "e.g. 04412345678", lambda f, fs: None),
     ("penalties", "Any penalty, punishment or compounding during the year?", "Yes / No", lambda f, fs: "No"),
     ("resolution_date", "Date of board resolution authorising the signatory", "DD/MM/YYYY", lambda f, fs: None),
@@ -72,9 +72,9 @@ def _num(fs, expr, default=None):
 
 def _rem_default(facts, fs):
     rem = (facts or {}).get("remuneration") or []
-    if not rem:
-        return None
     total = _num(fs, "Notes:Employee benefits expense/Directors' remuneration")
+    if not rem:
+        return None if total else "Nil"  # an amount in the financial statements but no names: staff must answer
     last = sum(r["gross"] for r in rem) or 1
     parts = []
     for r in rem:
@@ -448,9 +448,16 @@ def derive(facts, answers, fs):
             "remuneration_managingdirector_grosssalary": _i(v), "remuneration_managingdirector_commission": "0",
             "remuneration_managingdirector_stockoption": "0", "remuneration_managingdirector_others": "0"} for n, v in rem]
     else:
-        # No remuneration keyed in the app: tick the section's Nil box, as on a form filed with no remuneration.
-        d.set("remunaration_checkbox", "Yes", Q)
-        d.set("number_managingdirector_remuneration", "0", Q)
+        fs_rem = _num(fs, "Notes:Employee benefits expense/Directors' remuneration")
+        said_nil = str(a.get("remuneration") or "").strip().lower() in ("nil", "none", "no", "0", "na", "n/a")
+        if fs_rem and not said_nil:
+            # The financial statements show directors' remuneration but nobody has said who drew it: a query, not a guess.
+            d.todo.append(f"Directors' remuneration of {_i(fs_rem)} is in the financial statements: answer the remuneration question "
+                          "(Name = amount) on Inputs for the forms, then the tool fills section IX.")
+        else:
+            # Nil keyed in the app, or nothing in the financial statements: tick the section's Nil box.
+            d.set("remunaration_checkbox", "Yes", Q if said_nil else FS)
+            d.set("number_managingdirector_remuneration", "0", Q if said_nil else FS)
     d.set("number_ceo_cfo_remuneration", "0", LY)
 
     # ---- compliance, penalties, declaration
