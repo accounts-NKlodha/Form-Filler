@@ -225,9 +225,9 @@
     }
   }
 
-  let stopLoop = false, autorun = false;
+  let stopLoop = false, autorun = false, stoppedBy = '';
   async function runFill(plan, force = false, round = 0, idle = 0, left = -1) {
-    if (round === 0) stopLoop = false;
+    if (round === 0) { stopLoop = false; stoppedBy = ''; }
     // Plans that bring their attachments (ADT-1): upload the ones on this page that are still empty.
     const attachLog = [];
     if ((plan.attachments || []).length) {
@@ -273,7 +273,7 @@
     // Field names and statuses only: client values never go into the log.
     const log = {
       client: plan.client, slug: plan.slug, workbook: plan.workbook, url: location.origin + location.pathname,
-      finishedAt: new Date().toISOString(), counts: count, save: res.save,
+      finishedAt: new Date().toISOString(), counts: count, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
       entries: res.log.map(({ value, ...rest }) => rest),
     };
     const sent = await server('/log', log);
@@ -356,7 +356,7 @@
     const summary = order.filter(k => count[k]).map(k => `${k}: <b>${count[k]}</b>`).join('<br>');
     const problems = res.log.filter(e => ['failed', 'manual', 'hidden'].includes(e.status)).slice(0, 12)
       .map(e => `<li>${esc(e.code || '')} ${esc(e.label)}: ${esc(e.status)}${e.msg ? ' (' + esc(e.msg) + ')' : ''}</li>`).join('');
-    status(`${summary}<br><b style="color:#ffd166">${esc(res.save.msg)}</b><br>${problems ? '<ul style="margin:6px 0 0 16px;padding:0;max-height:200px;overflow:auto">' + problems + '</ul>' : ''}` +
+    status(`${stoppedBy ? `<b>Stopped: ${esc(stoppedBy)}.</b> Click Form Filler to carry on from here.<br>` : ''}${summary}<br><b style="color:#ffd166">${esc(res.save.msg)}</b><br>${problems ? '<ul style="margin:6px 0 0 16px;padding:0;max-height:200px;overflow:auto">' + problems + '</ul>' : ''}` +
       (count['other-page'] ? `<small>${count['other-page']} fields are on other pages: go there with the portal's own buttons and press Alt+Shift+F again.</small><br>` : '') +
       `<small>Log ${sent.ok ? 'saved in the client folder and ' : ''}downloaded. Review this page before you move on.</small>`, [['Close', close]]);
   }
@@ -468,10 +468,13 @@
 
   // One entry point for the keys and the side panel buttons.
   //   dump = Save form (Alt+Shift+D), fill = Form Filler (Alt+Shift+F), values = Alt+Shift+S, stop = Alt+Shift+X
-  function command(cmd) {
+  function command(cmd, by) {
     if (cmd === 'stop') {
+      // Say where the stop came from and when: a stop nobody meant to press must be traceable.
+      stoppedBy = `${by || 'Stop'} at ${new Date().toLocaleTimeString('en-GB')}`;
       stopLoop = true;
-      if (busy) { page('abort'); status('Stopping after the current field…'); }
+      if (busy) { page('abort'); status(`Stopping after the current field (${esc(stoppedBy)})…`); }
+      else status(`Stopped: ${esc(stoppedBy)}. Click Form Filler to carry on.`, [['Close', close]]);
       return 'ok';
     }
     if (busy) return 'busy';
@@ -494,8 +497,9 @@
     if (!(e.altKey && e.shiftKey)) return;
     const cmd = { KeyD: 'dump', KeyF: 'fill', KeyS: 'values', KeyX: 'stop' }[e.code];
     if (!cmd || (busy && cmd !== 'stop')) return;
+    if (!e.isTrusted) return;  // a real key press only, never one a page script made up
     e.preventDefault();
-    command(cmd);
+    command(cmd, 'Alt+Shift+' + e.code.slice(3) + ' on the keyboard');
   }, true);
 
   // Side panel buttons. Only the frame that holds the form answers, so the panel hears from exactly one.
@@ -515,7 +519,7 @@
       return false;
     }
     if (msg.cmd === 'probe') reply({ ok: true, slug: slug(), busy, version: chrome.runtime.getManifest().version });
-    else reply({ ok: true, slug: slug(), result: command(msg.cmd) });
+    else reply({ ok: true, slug: slug(), result: command(msg.cmd, 'Stop button in the side panel') });
     return false;
   });
 

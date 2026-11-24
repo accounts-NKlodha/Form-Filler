@@ -738,6 +738,7 @@
       const im = grp && safe(() => grp.instanceManager);
       if (!im) { manual('repeatable table: could not find its row manager, fill by hand'); return; }
       await jitter(600, 1200);
+      if (abort) { manual('stopped by user'); return; }
       for (let r = 0; r < t.rows.length && !abort; r++) {
         let count = safe(() => im.instanceCount, 0);
         while (count <= r) {
