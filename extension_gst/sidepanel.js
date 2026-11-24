@@ -110,6 +110,29 @@ const offline = (tab, typ) => async (p) => {
   return { bodies };
 };
 
+// On the portal's welcome page after login: press its own "Return Dashboard" button (plain navigation, nothing is filed).
+async function openDashboard() {
+  const SVC = 'https://services.gst.gov.in';
+  const tab = await tabOn(SVC);
+  if (!tab) return null;
+  state('Opening the Returns dashboard...');
+  const [r] = await chrome.scripting.executeScript({
+    target: { tabId: tab }, world: 'MAIN',
+    func: () => {
+      const b = [...document.querySelectorAll('a,button')].find((x) => /^return dashboard\b/i.test(x.innerText.trim()));
+      if (b) b.click();
+      return !!b;
+    },
+  });
+  if (!r || !r.result) return null;
+  for (let i = 0; i < 20; i++) {
+    await sleep(1000);
+    const t = await chrome.tabs.get(tab).catch(() => null);
+    if (t && t.url && t.url.startsWith(RET) && t.status === 'complete') { await sleep(1500); return tab; }
+  }
+  return null;
+}
+
 async function go() {
   if (busy) return;
   busy = true; $('go').disabled = true; run.note = {}; draw();
@@ -118,8 +141,9 @@ async function go() {
     let a;
     try { a = await appGet('/gst/api/clients?fy=' + fy); } catch (e) { return state('Form Filler is not running on this PC. Start it and try again.'); }
     const ctx = { fy, token: a.json.token, months: a.json.months, next: a.json.next_months, again: $('again').checked };
-    const tab = await tabOn(RET);
-    if (!tab) return state('No GST portal tab found. Log in and open the Returns dashboard, then press Read the year.');
+    let tab = await tabOn(RET);
+    if (!tab) tab = await openDashboard();
+    if (!tab) return state('No logged-in GST portal tab found. Log in at gst.gov.in, then press Read the year.');
     // whose login is this? the first filed GSTR-3B says
     state('Checking which GSTIN is logged in...');
     let gstin = '';
