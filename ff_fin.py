@@ -439,7 +439,40 @@ def inr(x):
     return _inr(round(float(x or 0)))
 
 
+_RP = {}  # client folder -> (signature of its files, review points): the points are worked out once per change, not on every click
+
+
+def _sig(folder):
+    n, latest = 0, 0.0
+    for root, _dirs, files in os.walk(folder):
+        for x in files:
+            try:
+                st = os.stat(os.path.join(root, x))
+            except OSError:
+                continue
+            n += 1
+            latest = max(latest, st.st_mtime) + st.st_size % 7
+    return n, latest, dt.date.today().isoformat(), (BUILDS.get(Path(folder).name) or {}).get("state")
+
+
 def review_points(folder):
+    """Every point that must be cleared before the tick: [{id, text, kind, detail, cleared}]. Kept until a file in the client folder changes."""
+    import copy
+    folder = Path(folder)
+    try:
+        sig = _sig(folder)
+    except Exception:  # noqa: BLE001
+        return _review_points(folder)
+    hit = _RP.get(str(folder))
+    if hit and hit[0] == sig:
+        return copy.deepcopy(hit[1])
+    pts = _review_points(folder)
+    if _sig(folder) == sig:  # nothing was written while working them out
+        _RP[str(folder)] = (sig, copy.deepcopy(pts))
+    return pts
+
+
+def _review_points(folder):
     """Every point that must be cleared before the tick: [{id, text, kind, detail, cleared}]."""
     folder = Path(folder)
     f = app.load(folder)

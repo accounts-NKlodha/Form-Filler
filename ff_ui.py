@@ -99,7 +99,7 @@ aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 1
 aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}aside .more a.on{opacity:1;font-weight:600;color:#fff;background:none}
 aside .who{display:flex;flex-direction:column;gap:4px;padding:12px;border-top:1px solid var(--side-line);margin-top:12px;font-size:13px}
 aside .who input{height:32px;border-radius:6px;border:1px solid var(--side-line);background:var(--side-on);color:#fff;padding:0 8px;font:inherit}
-main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
+main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
 .crumb{font-size:13px;color:var(--mfg)}h1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.01em;margin:2px 0 0}
 .acts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
@@ -582,6 +582,14 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
         pend = [r for r in rows if not r["approved"]]
         opts = lambda cur: "".join(f"<option value=\"{h['code']}\" {'selected' if h['code'] == cur else ''}>{esc(h['label'])}</option>" for h in heads)
         trs = []
+        gcy = {x["ledger_name"]: x["group_name"] for x in ff_fin.tb(folder, "tb_cy")}
+        gpy = {x["ledger_name"]: x["group_name"] for x in ff_fin.tb(folder, "tb_py")}
+
+        def grp(r):  # Tally group this year, Tally group last year (marked when the ledger moved group)
+            a, b = gcy.get(r["ledger"], ""), gpy.get(r["ledger"], "")
+            moved = f"<div class=err>Moved group</div>" if a and b and a.lower() != b.lower() else ""
+            return (f"<td>{esc(a) or '<span class=mut>Not in this year</span>'}</td>"
+                    f"<td>{esc(b) or '<span class=mut>Not in last year</span>'}{moved}</td>")
         for r in pend + [r for r in rows if r["approved"]]:
             led = esc(r["ledger"])
             box = "" if r["approved"] else f'<input type=checkbox name=ok value="{led}" checked aria-label=Approve>'
@@ -589,15 +597,15 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
             if r["approved"]:
                 head_ = esc(r["proposed"]["line"] + " - " + r["proposed"]["label"])
             else:
-                head_ = f'<select name="h:{led}" style="max-width:320px" aria-label=Head>{opts(r["proposed"]["code"])}</select>'
+                head_ = f'<select name="h:{led}" style="width:100%;max-width:520px" aria-label=Head>{opts(r["proposed"]["code"])}</select>'
             why = esc(r["source"]) + (": " + esc(r["reason"]) if r["reason"] else "")
-            trs.append(f"<tr><td>{box}</td><td><b>{led}</b><br><span class=mut>{esc(r['group'])}</span>{warn}</td>"
+            trs.append(f"<tr><td>{box}</td><td><b>{led}</b>{warn}</td>{grp(r)}"
                        f"<td class=n>{money(r['cy'])}</td><td class=n>{money(r['py'])}</td><td>{head_}<div class=mut>{why}</div></td></tr>")
         return (f"<form method=post action=/ff/map/approve data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
                 f"<div class=h>{len(pend)} ledgers wait for approval; {len(rows) - len(pend)} are approved or follow Tally's group</div>"
                 f"<p class=mut style=\"margin:0 0 12px\">Ledgers that are nil in both years are left out. A ledger that is nil this year is listed "
                 f"when it had a balance last year, because last year's column needs its head too.</p>"
-                f"<table><tr><th></th><th>Ledger</th><th class=n>This year</th><th class=n>Last year</th><th>Schedule III head</th></tr>{''.join(trs)}</table>"
+                f"<table><tr><th></th><th>Ledger</th><th>Tally group, this year</th><th>Tally group, last year</th><th class=n>This year</th><th class=n>Last year</th><th>Schedule III head</th></tr>{''.join(trs)}</table>"
                 + (f"<p><button class=sm>Approve ticked heads and rebuild</button></p>" if pend else "") + "</form>")
     if tab == "questions":
         if not app.inputs_path(folder).exists():
