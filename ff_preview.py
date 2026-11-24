@@ -241,16 +241,25 @@ def render(folder, ui):
         pass
     forms = [s for s in (app.load(folder).get("forms") or []) if s in app.SMART]
     legend = "".join(f"<span><i style=\"background:{c}\"></i>{w}</span>" for w, c in SRC.values())
-    out = [CSS, "<div class=h>What will be typed on MCA, laid out as on the form</div>"
+    radios = "".join(f"<input type=radio name=pvf id=pvf{n} {'checked' if n == 0 else ''} style=\"position:absolute;opacity:0;pointer-events:none\">"
+                     for n in range(len(forms)))
+    tabs = "".join(f"<label for=pvf{n} class=btn tabindex=0>{ui.FORM_LABEL.get(s_, s_)}</label>" for n, s_ in enumerate(forms))
+    pick = "".join(f"#pvf{n}:checked ~ .pv.pvf{n}{{display:block}}#pvf{n}:checked ~ .pvtabs label[for=pvf{n}]{{background:#1b1d21;color:#fff;border-color:#1b1d21}}"
+                   for n in range(len(forms)))
+    out = [CSS, f"<style>.pv[class*=pvf]{{display:none}}{pick}"
+           ".g12:has(.pv-root)>.s5{display:none}.g12:has(.pv-root)>.s7{grid-column:1/-1}</style>"
+           "<div class=pv-root><div class=h>What will be typed on MCA, laid out as on the form</div>"
            "<p>Read-only. To change a value, correct its source: the mapping, an answer on Inputs for the forms, or the document it was read from. "
            "Fields the portal fills by itself (company name, auditor details from the ADT-1 SRN) are not listed.</p>"
+           f"{radios}<div class=\"pvtabs row\" style=\"gap:8px;margin:12px 0\">{tabs}</div>"
            f"<div class=pv-lg><span class=mut>Colour on each box shows the source (hover for detail):</span>{legend}</div>"
            "<input type=checkbox id=pvnil style=\"margin-right:6px\"><label for=pvnil>Hide lines that are 0 in every column</label>"]
-    for slug in forms:
+    for n, slug in enumerate(forms):
         try:
-            body, n, nils = form_html(folder, slug, ui)
+            body, cnt, nils = form_html(folder, slug, ui)
         except Exception as e:  # noqa: BLE001
-            out.append(f"<div class=pv><div class=seg>{ui.FORM_LABEL.get(slug, slug)}</div><div class=blk>Could not read the form values ({ui.esc(str(e))}).</div></div>")
+            out.append(f"<div class=\"pv pvf{n}\"><div class=seg>{ui.FORM_LABEL.get(slug, slug)}</div><div class=blk>Could not read the form values ({ui.esc(str(e))}).</div></div>")
             continue
-        out.append(f"<div class=pv><div class=seg style=\"background:#102a43\">Form {ui.FORM_LABEL.get(slug, slug)}: {n} fields, {nils} of them 0</div>{body}</div>")
+        out.append(f"<div class=\"pv pvf{n}\"><div class=seg style=\"background:#102a43\">Form {ui.FORM_LABEL.get(slug, slug)}: {cnt} fields, {nils} of them 0</div>{body}</div>")
+    out.append("</div>")
     return "".join(out)
