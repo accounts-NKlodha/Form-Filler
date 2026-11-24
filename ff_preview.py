@@ -4,6 +4,7 @@ A line that has a current and a previous figure (or several columns, as in the s
 table row, as on the portal. Single fields are a label with its box. Every box carries a colour for where the
 value came from; the full source is in the tooltip. Read-only: nothing here is typed by hand.
 """
+import ast
 import re
 
 import app
@@ -123,23 +124,42 @@ def _mgt7a(f):
 
 
 CSS = """<style>
-.pv{margin-top:12px;border:1px solid #c9ced6;background:#fff;overflow-x:auto}
-.pv .seg{background:#1d3c6e;color:#fff;font-weight:600;font-size:15px;padding:10px 14px}
-.pv .part{background:#e8edf5;color:#1b1d21;font-weight:600;padding:8px 14px;border-top:1px solid #c9ced6;border-bottom:1px solid #c9ced6}
-.pv .blk{padding:10px 14px 14px}
-.pv .fld{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,340px);gap:6px 16px;align-items:center;padding:5px 0}
-.pv .box{border:1px solid #9aa3b0;border-left:4px solid #5c6470;border-radius:2px;background:#f9fafb;padding:6px 8px;min-height:32px;overflow-wrap:anywhere}
+.pv{margin-top:12px;border:1px solid #b9c7d6;background:#eaf2fa;overflow-x:auto;padding-bottom:12px}
+.pv .fhead{background:#e9eaec;border-bottom:1px solid #c9ced6;padding:14px 20px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.pv .fhead b{font-size:18px;color:#1b1d21}
+.pv .fhead span{font-size:15px;color:#1b1d21;flex:1}
+.pv .fhead em{font-style:normal;font-size:13px;color:#4a5260}
+.pv .seg{display:flex;align-items:center;gap:14px;color:#0b3a66;font-weight:600;font-size:15px;text-transform:uppercase;letter-spacing:.02em;padding:18px 20px 8px}
+.pv .seg::after{content:"";flex:1;height:2px;background:#f08a24}
+.pv .part{background:#c9dff3;color:#0b3a66;font-weight:600;padding:8px 14px;margin:8px 20px 0;border:1px solid #b3cde6;border-bottom:0}
+.pv .blk{margin:0 20px 8px;padding:12px 14px 14px;background:#dbe9f6;border:1px solid #b3cde6}
+.pv .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 24px;align-items:end;margin:4px 0 10px}
+.pv .fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pv .fld.wide{grid-column:1/-1}
+.pv .fld>div:first-child{font-size:13px;color:#1b1d21}
+.pv .box{border:1px solid #8fa3b8;border-left:4px solid #5c6470;border-radius:3px;background:#fff;padding:6px 8px;min-height:34px;overflow-wrap:anywhere}
+.pv .opts{display:flex;gap:20px;flex-wrap:wrap;border-left:4px solid #5c6470;padding:6px 8px;min-height:34px;align-items:center}
+.pv .opts span{display:inline-flex;gap:6px;align-items:center}
+.pv .opts i{width:14px;height:14px;border:1.5px solid #4a5260;border-radius:50%;background:#fff;display:inline-block}
+.pv .opts i.sq{border-radius:2px}
+.pv .opts i.on{border-color:#0b3a66;background:radial-gradient(#0b3a66 45%,#fff 50%)}
+.pv .opts i.sq.on{background:#0b3a66}
 .pv td .box{text-align:right;font-variant-numeric:tabular-nums;min-width:84px}
 .pv td .box.t{text-align:left}
-.pv table{width:100%;border-collapse:collapse}
-.pv th{background:#f1f3f7;font-weight:600;text-align:right;padding:6px 8px;border:1px solid #c9ced6;font-size:13px}
+.pv table{width:100%;border-collapse:collapse;background:#fff;margin:4px 0 10px}
+.pv th{background:#c9dff3;color:#0b3a66;font-weight:600;text-align:right;padding:7px 8px;border:1px solid #9fbcd8;font-size:13px}
 .pv th:first-child{text-align:left}
-.pv td{padding:4px 8px;border:1px solid #dfe3ea;vertical-align:middle}
+.pv td{padding:4px 8px;border:1px solid #b9cbdd;vertical-align:middle}
 .pv td:first-child{min-width:180px}
 .pv-lg{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .pv-lg i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 #pvnil:checked ~ .pv .nil{display:none}
+@media(max-width:1100px){.pv .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>"""
+
+TITLE = {"aoc4": ("Form No. AOC-4", "Form for filing financial statement and other documents with the Registrar"),
+         "mgt7a": ("Form No. MGT-7A", "Abridged Annual Return for OPCs and Small Companies"),
+         "mgt7": ("Form No. MGT-7", "Annual Return (other than OPCs and Small Companies)")}
 
 
 def _nil(v):
@@ -175,6 +195,30 @@ def _box(r, ui, text=False):
     tip = word + (f": {how}" if how and how != word else "")
     return (f"<div class=\"box{' t' if text else ''}\" style=\"border-left-color:{colour}\" title=\"{ui.esc(str(tip)[:300])}\">"
             f"{val if str(val).strip() else '&nbsp;'}</div>")
+
+
+def _opts(f, r, ui):
+    """Radio and tick-box fields drawn as on the portal: every option, the chosen one filled. '' when not such a field."""
+    word, colour = SRC.get(r["category"], (r["category"], "#5c6470"))
+    v = str(r["value"]).strip().lower()
+    if r.get("_nil_tick") or r.get("_tick"):
+        on = v in ("yes", "true", "1")
+        items = [("Nil" if r.get("_nil_tick") else "Ticked" if on else "Not ticked", on)]
+        sq = " sq"
+    elif f.get("type") == "radio":
+        try:
+            o = f.get("options") or []
+            o = ast.literal_eval(o) if isinstance(o, str) else o
+            texts = [str(x.get("text") or x.get("value") or "").strip() for x in o]
+        except Exception:  # noqa: BLE001
+            return ""
+        if not 2 <= len(texts) <= 5 or not all(texts) or v not in [t.lower() for t in texts]:
+            return ""
+        items, sq = [(t, t.lower() == v) for t in texts], ""
+    else:
+        return ""
+    return (f"<div class=opts style=\"border-left-color:{colour}\" title=\"{ui.esc(word)}\">"
+            + "".join(f"<span><i class=\"{'on' if on else ''}{sq}\"></i>{ui.esc(t)}</span>" for t, on in items) + "</div>")
 
 
 def _part(items, ui):
@@ -213,11 +257,14 @@ def _part(items, ui):
             out.append(f"<table>{head}{''.join(body)}</table>")
             i = j
         else:
-            row, cells = runs[i]
-            _, f, r = cells[0]
-            out.append(f"<div class=\"fld{' nil' if _nil(r['value']) else ''}\"><div>{ui.esc(f['label'][:200])}</div>"
-                       f"{_box(r, ui, text=not isinstance(r['value'], (int, float)))}</div>")
-            i += 1
+            flds = []
+            while i < len(runs) and not runs[i][1][0][0]:  # single fields in a row: the portal's label-above-box grid
+                _, f, r = runs[i][1][0]
+                wide = len(f["label"]) > 110 or len(str(r["value"])) > 60
+                flds.append(f"<div class=\"fld{' nil' if _nil(r['value']) else ''}{' wide' if wide else ''}\"><div>{ui.esc(f['label'][:200])}</div>"
+                            f"{_opts(f, r, ui) or _box(r, ui, text=not isinstance(r['value'], (int, float)))}</div>")
+                i += 1
+            out.append(f"<div class=grid>{''.join(flds)}</div>")
     return "".join(out)
 
 
@@ -315,6 +362,7 @@ def render(folder, ui):
         except Exception as e:  # noqa: BLE001
             out.append(f"<div class=\"pv pvf{n}\"><div class=seg>{ui.FORM_LABEL.get(slug, slug)}</div><div class=blk>Could not read the form values ({ui.esc(str(e))}).</div></div>")
             continue
-        out.append(f"<div class=\"pv pvf{n}\"><div class=seg style=\"background:#102a43\">Form {ui.FORM_LABEL.get(slug, slug)}: {cnt} fields, {nils} of them 0</div>{body}</div>")
+        no, title = TITLE.get(slug, ("Form " + ui.FORM_LABEL.get(slug, slug), ""))
+        out.append(f"<div class=\"pv pvf{n}\"><div class=fhead><b>{no}</b><span>{title}</span><em>{cnt} fields, {nils} of them 0</em></div>{body}</div>")
     out.append("</div>")
     return "".join(out)
