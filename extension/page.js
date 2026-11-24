@@ -472,11 +472,13 @@
       // answer) makes MCA clear every field that depends on it, so an already-ticked option is left alone.
       const target = radioTarget(f, els);
       if (!target) return { ...entry, status: 'failed', msg: 'no radio option "' + (f.display ?? f.value) + '"' };
-      if (target.checked) return { ...entry, status: 'unchanged' };
+      // For the log: what the portal's own form model holds for this question (an option code, not client data).
+      const held = () => 'portal holds: ' + JSON.stringify(cmp ? safe(() => cmp.value) : undefined) + '; ticked on screen: ' + els.filter(e => e.checked).length;
+      if (target.checked) return { ...entry, status: 'unchanged', msg: held() };
       if (isShown(target)) safe(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }));
       target.click();
       await sleep(200);
-      return target.checked ? { ...entry, method: 'dom', status: 'filled' }
+      return target.checked ? { ...entry, method: 'dom', status: 'filled', msg: held() }
                             : { ...entry, method: 'dom', status: 'failed', msg: 'radio did not stay ticked' };
     }
     const cur = cmp ? safe(() => cmp.value) : domValue(f, els);

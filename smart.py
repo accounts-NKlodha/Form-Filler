@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 5
+RULES_VERSION = 6
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -559,6 +559,9 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
                                  "TurnoverOfTheRupees3": _i(rev) if (rev is not None and len(prods) == 1) else None,
                                  "DetailstableLAstcolumn": _i(rev) if (rev is not None and len(prods) == 1) else None}
                                 for p in prods]
+    elif not rev and (f or rev == 0):
+        # No revenue from operations and no product filed last year: the portal wants 0 here, with an empty table.
+        d.set("TotalNumberProductService123", "0", LY if f else FS)
     # EPS = profit for the year / equity shares; share capital raised = no change unless answered otherwise
     eq = (mgt7a_facts or {}).get("equity") or {}
     nominal = ((eq.get("nominal") or [None])[0]) or 10
