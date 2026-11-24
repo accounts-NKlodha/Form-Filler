@@ -187,16 +187,18 @@ def generate(folder, user=""):
             note = f"The reports could not be drafted: {str(e)[:120]}"
     else:
         note = f"Reports not drafted: {why}"
-    try:
-        pdf, pnote = printable(folder)
-        done.append(pdf.name)
-        note = (note + " " + pnote).strip()
-    except Exception as e:  # noqa: BLE001
-        note = (note + f" The print-ready PDF was not made ({str(e)[:140]}): print from the Excel and Word files.").strip()
+    if MAKE_PDF:  # off: staff print from Excel and Word, sign, and the signed PDFs are joined on upload (Rohit, 25 Nov 2026)
+        try:
+            pdf, pnote = printable(folder)
+            done.append(pdf.name)
+            note = (note + " " + pnote).strip()
+        except Exception as e:  # noqa: BLE001
+            note = (note + f" The print-ready PDF was not made ({str(e)[:140]}): print from the Excel and Word files.").strip()
     ff_audit.event(folder, "docs", f"Financials for signing generated in '{SIGN_DIR}' ({len(done)} files)", by=user or "staff")
     return d, done, note
 
 
+MAKE_PDF = False
 PRINT_SHEETS = ["BS", "PL", "Cash Flow", "Notes", "Related_Parties", "Ratios"]  # the statements, in print order; working sheets are left out
 _PS = r"""
 param([string]$job)
@@ -310,7 +312,7 @@ def gen_box(folder, ui):
             f"<button class=sm data-busy=Generating>Generate financials for signing</button></form> "
             + (f"<form method=post action=/ff/docs/open style=\"display:inline\"><input type=hidden name=c value=\"{c}\">"
                f"<button class=sm>Open folder</button></form>" if files else "") + "</p>"
-            f"<p>Saved in <code>{esc(str(d))}</code>: one print-ready PDF, plus the Schedule III workbook and the drafted reports it is made from.</p>{warn}"
+            f"<p>Saved in <code>{esc(str(d))}</code>: the Schedule III workbook (Excel, set up for A4 printing: print the BS, PL, Cash Flow and Notes sheets) and the drafted reports (Word). After signing, upload the scanned PDFs below: several are joined into one for MCA.</p>{warn}"
             + (f"<p><a class=btn href=\"/ff/report?c={q}&f={quote(print_name(folder))}&d=sign\">Open the print-ready PDF</a> "
                f"<span class=mut>A4, one file: statements, notes and reports with the signature blocks.</span></p>"
                if (d / print_name(folder)).exists() else "")
