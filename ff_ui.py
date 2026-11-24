@@ -641,7 +641,12 @@ t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Ente
         flags = ff_fin.docs_flags(folder)
         lst = "".join(f"<li><a href=\"/ff/report?c={q}&f={quote(n)}\">{esc(n)}</a></li>" for n in made)
         fl = "".join(f"<li>{esc(x)}</li>" for x in flags)
-        return (f"<div class=h>Board's report, auditor's report with CARO, notice, board and members' meeting papers</div>"
+        try:
+            import ff_signed
+            gen = ff_signed.gen_box(folder, sys.modules[__name__])
+        except Exception:  # noqa: BLE001
+            gen = ""
+        return (gen + f"<div class=h>Board's report, auditor's report with CARO, notice, board and members' meeting papers</div>"
                 f"<p>Rolled forward from last year's signed documents and filled from this year's Schedule III, so every figure agrees with the accounts.</p>"
                 + (f"<form method=post action=/ff/docs><input type=hidden name=c value=\"{esc(name)}\"><button class=sm>Draft the documents</button></form>" if ok
                    else f"<p class=mut>Not ready: {esc(why)}. Last year's documents go in <code>financials\\{esc(ff_fin.fy_of(folder))}\\last_year_docs</code> "
@@ -1192,6 +1197,16 @@ def handle_post(path, query, body, form):
             m = app.build(folder)
             ff_audit.event(folder, "questions", f"{n} answers saved", by=user or "staff")
             return _back("/review", f"{n} answers saved. {m}", c=folder.name, tab="questions")
+        if path == "/ff/docs/generate":
+            import ff_signed
+            folder = app.folder_of(name)
+            d, done, note = ff_signed.generate(folder, user)
+            return _back("/review", f"{len(done)} files saved in {d}. {note}".strip(), c=folder.name, tab="reports")
+        if path == "/ff/docs/open":
+            import ff_signed
+            folder = app.folder_of(name)
+            opened = ff_signed.open_folder(folder)
+            return _back("/review", "Folder opened on the PC that runs Form Filler." if opened else "The folder can be opened only on a Windows PC.", c=folder.name, tab="reports")
         if path == "/ff/docs":
             folder = app.folder_of(name)
             ff_jobs.add(folder.name, "docs", user)

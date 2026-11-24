@@ -150,3 +150,78 @@ def box(folder, ui):
     return ("<div class=sec>Attachments for MCA</div><p>The filing queue attaches these on the portal. Drop a file on a row or choose it. "
             f"Signed PDFs can also be saved straight into <code>{ui.esc(st['dir'])}</code>.</p>"
             + "".join(out) + (f"<ul>{bad}</ul>" if bad else "") + _JS)
+
+
+# ---------------------------------------------------------------- financials for signing (Reports and meetings tab)
+SIGN_DIR = "for signing"
+
+
+def sign_dir(folder):
+    d = Path(folder) / SIGN_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def generate(folder, user=""):
+    """Put this year's Schedule III workbook and the drafted reports in clients/<c>/for signing/. Returns (folder, files, note)."""
+    import shutil
+    import ff_audit
+    import ff_fin
+    folder = Path(folder)
+    fs = ff_fin.output(folder)
+    if not fs:
+        raise ValueError("No financials yet: get data from Tally first")
+    d = sign_dir(folder)
+    done, note = [], ""
+    shutil.copy2(fs, d / Path(fs).name)
+    done.append(Path(fs).name)
+    ok, why = ff_fin.docs_ready(folder)
+    if ok:
+        try:
+            out, _flags = ff_fin.make_docs(folder, user or "staff")
+            for p in sorted(Path(out).glob("*")):
+                if p.suffix.lower() in (".docx", ".xlsx") and not p.name.startswith("~"):
+                    shutil.copy2(p, d / p.name)
+                    done.append(p.name)
+        except Exception as e:  # noqa: BLE001
+            note = f"The reports could not be drafted: {str(e)[:120]}"
+    else:
+        note = f"Reports not drafted: {why}"
+    ff_audit.event(folder, "docs", f"Financials for signing generated in '{SIGN_DIR}' ({len(done)} files)", by=user or "staff")
+    return d, done, note
+
+
+def open_folder(folder):
+    """Open the 'for signing' folder in Explorer on the PC that runs Form Filler."""
+    import os
+    d = sign_dir(folder)
+    if hasattr(os, "startfile"):
+        os.startfile(str(d))  # noqa: S606
+        return True
+    return False
+
+
+def gen_box(folder, ui):
+    import ff_docs
+    import ff_fin
+    from urllib.parse import quote
+    folder = Path(folder)
+    esc = ui.esc
+    d = folder / SIGN_DIR
+    files = sorted(p for p in d.glob("*") if p.is_file() and not p.name.startswith("~")) if d.exists() else []
+    lst = "".join(f"<li>{esc(p.name)} <span class=mut>{esc(ff_docs.stamp(p))}</span></li>" for p in files)
+    c = esc(folder.name)
+    q = quote(folder.name)
+    ok, why = ff_fin.docs_ready(folder)
+    warn = "" if ok else f"<p class=mut>The workbook is generated now; the reports join it once this is done: {esc(why)}.</p>"
+    return (f"<div class=h>Financials for signing</div>"
+            f"<p class=mut style=\"margin:0 0 12px\">1 Generate &middot; 2 Print, sign and scan &middot; 3 Upload the signed PDF below &middot; "
+            f"4 <a href=\"/review?c={q}&tab=preview\">Form preview</a> &middot; 5 <a href=\"/file\">File on MCA</a></p>"
+            f"<p class=row><form method=post action=/ff/docs/generate style=\"display:inline\"><input type=hidden name=c value=\"{c}\">"
+            f"<button class=sm data-busy=Generating>Generate financials for signing</button></form> "
+            + (f"<form method=post action=/ff/docs/open style=\"display:inline\"><input type=hidden name=c value=\"{c}\">"
+               f"<button class=sm>Open folder</button></form>" if files else "") + "</p>"
+            f"<p>Saved in <code>{esc(str(d))}</code>: the Schedule III workbook (balance sheet, profit and loss, notes) and the drafted "
+            f"Board's report, Auditor's report and notice.</p>{warn}"
+            + (f"<ul>{lst}</ul>" if files else "<p class=mut>Nothing generated yet.</p>")
+            + "<div style=\"height:16px\"></div>")
