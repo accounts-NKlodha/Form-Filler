@@ -228,6 +228,7 @@
   let stopLoop = false, autorun = false, stoppedBy = '';
   async function runFill(plan, force = false, round = 0, idle = 0, left = -1) {
     if (round === 0) { stopLoop = false; stoppedBy = ''; }
+    const roundStart = new Date().toISOString();   // for the time-taken figure on the partner review screen
     // Plans that bring their attachments (ADT-1): upload the ones on this page that are still empty.
     const attachLog = [];
     if ((plan.attachments || []).length) {
@@ -273,7 +274,7 @@
     // Field names and statuses only: client values never go into the log.
     const log = {
       client: plan.client, slug: plan.slug, workbook: plan.workbook, url: location.origin + location.pathname,
-      finishedAt: new Date().toISOString(), counts: count, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
+      startedAt: roundStart, round, finishedAt: new Date().toISOString(), counts: count, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
       entries: res.log.map(({ value, ...rest }) => rest),
     };
     const sent = await server('/log', log);
