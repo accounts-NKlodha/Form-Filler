@@ -164,6 +164,48 @@ def group_of(f):
     return "Other details"
 
 
+AOC4_SEG = {"I": "Segment I: Balance sheet", "II": "Segment II: Profit and loss", "III": "Segment III: Related party transactions",
+            "IV": "Segment IV: Auditor's report", "V": "Segment V: Miscellaneous"}
+AOC4_PART = {  # panel -> (segment, part heading as printed on the form)
+    "generalinfopanel3": ("I", "I Balance sheet"), "detailsoflongtermtablepanel": ("I", "II Detailed balance sheet items: long-term borrowings"),
+    "detailsofshorttermtablepanel": ("I", "II Detailed balance sheet items: short-term borrowings"),
+    "longtermloansandadvpanel": ("I", "II Detailed balance sheet items: long-term loans and advances"),
+    "longtermloansandadvdougpanel": ("I", "II Detailed balance sheet items: long-term loans and advances, doubtful"),
+    "detailstradereceivablespanel": ("I", "II Detailed balance sheet items: trade receivables"),
+    "financialparameterspanel": ("I", "III Financial parameters: balance sheet items"),
+    "sharecapitalraisedpanel": ("I", "IV Share capital raised during the year"), "detailsofsbnpanel": ("I", "V Specified bank notes"),
+    "videtailsrelatedpanel": ("I", "VI Cost records and cost audit"),
+    "profitandlossinner1": ("II", "III Financial parameters: profit and loss items"),
+    "detailsofexpenditurepanel": ("II", "II-B Expenditure in foreign exchange"), "detailsofearningpanel": ("II", "II-A Earnings in foreign exchange"),
+    "profitandlosspanel": ("II", "I Statement of profit and loss"),
+    "detailsrelatedtoprinciplepanel": ("II", "IV Principal products or services"),
+}
+
+
+def aoc4_segment(f, state):
+    """(segment heading, part heading) for an AOC-4 field; state carries the position inside the last panel."""
+    keys = [re.sub(r"[^a-z0-9]", "", str(x).lower()) for x in f.get("section") or []]
+    for k in reversed(keys):
+        if k in AOC4_PART:
+            seg, part = AOC4_PART[k]
+            return AOC4_SEG[seg], part
+    name = f.get("name") or ""
+    if "disclosureaboutrelatedpanel" in keys:
+        if name.startswith("segmentIVradio"):
+            state["seg"] = "IV"
+        elif name.startswith("segmentVradio"):
+            state["seg"] = "V"
+        seg = state.setdefault("seg", "III")
+        part = {"III": "Related party transactions", "IV": "CSR applicability" if name.lower().startswith("csr") else "Auditor's report",
+                "V": "Secretarial audit"}[seg]
+        return AOC4_SEG[seg], part
+    if "panel1aoc4" in keys or "panel2aoc4" in keys:
+        return "General information", f.get("group") or ""
+    if "attachmentpanel" in keys:
+        return "Attachments and declaration", "Attachments and declaration"
+    return "", f.get("group") or ""
+
+
 def section_text(f):
     """Readable section path: drops the portal's internal panel names (LLP-form04_Panel, Section...)."""
     keep = []
@@ -204,12 +246,15 @@ def schema(slug):
     d = load_dump(slug)
     pre = prefix(slug)
     fields, tables, seen, n = [], {}, set(), 0
+    seg_state = {}
     for f in d["fields"]:
         if f["type"] not in INPUT_TYPES + ("file",) or not f.get("key") or f["key"] in seen or is_technical(f):
             continue
         seen.add(f["key"])
         n += 1
-        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f), group=group_of(f))
+        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f), group=group_of(f), segment="")
+        if slug.startswith("aoc4"):
+            f["segment"], f["group"] = aoc4_segment(f, seg_state)
         rep = f.get("repeat")
         if rep and rep.get("groupSom") and f["type"] != "file":
             t = tables.setdefault(rep["groupKey"] or rep["title"], {
@@ -779,7 +824,7 @@ def make_plan(xlsx, slug):
     mp = read_map(slug)
 
     def entry(f, v):
-        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
+        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
         e.update(convert(f, v))
         # Previous-year figures: the extension keeps whatever MCA pre-filled.
         if (mp.get(f["key"]) or {}).get("period") == "PY" or re.search(r"previous", f.get("som") or "", re.I):
@@ -797,7 +842,7 @@ def make_plan(xlsx, slug):
                 if not f or f["type"] == "file":
                     continue  # read-only fields are checked live on the portal, not here
                 if len(row) > 9 and row[9]:
-                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
+                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
                     e.update(value="", copyFrom=row[9])
                     plan["fields"].append(e)
                     continue
@@ -836,7 +881,7 @@ def make_plan(xlsx, slug):
         for code, src in (("AOC4-079", "AOC4-012"),):
             if code not in have and src in have and code in by_code:
                 f = by_code[code]
-                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group")}
+                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
                 e.update(convert(f, have[src]["value"]))
                 plan["fields"].append(e)
     return plan

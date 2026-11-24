@@ -413,8 +413,8 @@
 
   async function renderSide() {
     const p = sidePlan;
-    const items = p.fields.map(f => ({ f, label: f.label, section: f.group || f.sectionText || '' }));
-    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, section: 'Tables: ' + t.title, table: true })));
+    const items = p.fields.map(f => ({ f, label: f.label, segment: f.segment || '', section: f.group || f.sectionText || '' }));
+    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, segment: 'Tables', section: t.title, table: true })));
     const on = await page('onPage', { keys: items.map(x => x.f.key) });
     const list = items.filter((x, i) => sideAll || x.table || (on && on[i]));
     side.innerHTML = '';
@@ -436,14 +436,27 @@
     side.appendChild(head);
     const body = document.createElement('div');
     body.style.cssText = 'overflow:auto;flex:1;padding:6px 10px 20px';
-    let last = null;
+    let last = null, lastSeg = null;
+    const twoLevel = list.some(y => y.segment);
     for (const x of list) {
+      // Top heading: the form's own segment (AOC-4: General information, Segment I to V). Stays pinned while its fields scroll.
+      if (twoLevel && x.segment !== lastSeg) {
+        lastSeg = x.segment;
+        last = null;
+        const g = document.createElement('div');
+        const n = list.filter(y => y.segment === lastSeg).length;
+        g.textContent = `${lastSeg || 'Other'} (${n})`;
+        g.style.cssText = 'position:sticky;top:-6px;z-index:2;margin:14px -10px 4px;padding:8px 10px;font-weight:600;font-size:14px;color:#fff;background:#102a43';
+        body.appendChild(g);
+      }
       if (x.section !== last) {
         last = x.section;
         const h = document.createElement('div');
-        const n = list.filter(y => y.section === last).length;
+        const n = list.filter(y => y.section === last && y.segment === x.segment).length;
         h.textContent = `${last || 'General'} (${n})`;
-        h.style.cssText = 'position:sticky;top:-6px;z-index:1;margin:12px -10px 4px;padding:7px 10px;font-weight:600;font-size:13px;color:#fff;background:#334e68';
+        h.style.cssText = twoLevel
+          ? 'margin:10px 0 4px;padding:4px 0;font-weight:600;font-size:13px;color:#334e68;border-bottom:2px solid #9fb3c8'
+          : 'position:sticky;top:-6px;z-index:1;margin:12px -10px 4px;padding:7px 10px;font-weight:600;font-size:13px;color:#fff;background:#334e68';
         body.appendChild(h);
       }
       const row = document.createElement('div');
