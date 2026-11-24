@@ -43,6 +43,22 @@ def load(xlsx):
     return st, pl, notes, rp
 
 
+_LY_KEYS = {"notice.docx": ("notice",), "board report.docx": ("board", "br-", "br ", "br_", "director"),
+            "auditors report.docx": ("audit",), "sap.docx": ("sap", "accounting polic")}
+
+
+def _find_ly(ly, n):
+    """Last year's file under its standard name, else the Word file staff uploaded whose name says what it is."""
+    p = os.path.join(ly, n)
+    if os.path.exists(p) or n not in _LY_KEYS or not os.path.isdir(ly):
+        return p
+    for f in sorted(os.listdir(ly)):
+        low = f.lower()
+        if low.endswith(".docx") and not low.startswith("~") and any(k in low for k in _LY_KEYS[n]):
+            return os.path.join(ly, f)
+    return p
+
+
 class _Setup(dict):
     """Setup values; a blank or missing text row reads as '' so one empty box does not stop the whole document set."""
     def __getitem__(self, k):
@@ -102,7 +118,7 @@ def main(cfg_path, xlsx, ly, out):
         ("KOMAL LODHA N", "KOMAL LODHA"), ("(Figures in 00s)", "")] + [tuple(x) for x in D.get("name_fixes", [])]
     COMMON += [(m, UDIN) for m in D.get("ly_udins", [])]
     fn = lambda kind: os.path.join(out, f"{SHORT} - {kind}")
-    lyf = lambda n: os.path.join(ly, n)
+    lyf = lambda n: _find_ly(ly, n)
 
     # ------------------------------------------------------------ notice
     auditor_agm = pdate(st["Date of AGM appointing auditor"]) if st.get("Date of AGM appointing auditor") else None
