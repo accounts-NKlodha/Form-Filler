@@ -27,6 +27,18 @@
   const GENERIC = /^(text ?box|text ?area|numeric ?box|date ?picker|drop ?down( ?list)?|radio ?button|check ?box|switch|field|untitled)\s*\d*$/i;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const jitter = (a, b) => sleep(a + Math.random() * (b - a));
+  // Name of the file an attachment box already shows (a listed item or a link ending in a file extension), else ''.
+  function heldFile(box) {
+    try {
+      for (const e of box.querySelectorAll('[class*="fileItem"], [class*="file-item"], .guide-fu-fileItemList li, a, span, div')) {
+        if (e.children.length > 1) continue;
+        const t = (e.innerText || e.textContent || '').trim();
+        if (t.length < 120 && /\.(pdf|jpe?g|png|xlsm?)$/i.test(t) && e.offsetParent !== null) return t;
+      }
+    } catch (e) { /* not readable: treat as empty */ }
+    return '';
+  }
+
   const strip = s => String(s ?? '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/(?:[#.@][\w-]+(?:::?[\w-]+)*\s*,?\s*)+\{[^{}]*\}/g, ' ').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   const gb = () => (window.guideBridge && typeof window.guideBridge.visit === 'function') ? window.guideBridge : null;
@@ -956,7 +968,7 @@
           if (!box || !isShown(box)) return 'other-page';
           const listed = box.querySelector('[class*="fileItem"], [class*="file-item"], .guide-fu-fileItemList li');
           const txt = [...box.querySelectorAll('input[type="text"], input:not([type])')].map(i => norm(i.value)).join('');
-          return (listed && norm(listed.innerText)) || /\.pdf/i.test(txt) ? 'has-file' : 'empty';
+          return (listed && norm(listed.innerText)) || /\.pdf/i.test(txt) || heldFile(box) ? 'has-file' : 'empty';
         });
       }
       else if (req.op === 'notices') {
@@ -970,7 +982,9 @@
         const any = widgets(a.domBase).find(isShown) || document.querySelector(`[id^="${a.domBase}"]`);
         const box = any && any.closest('[class*="guideFieldNode"]');
         const input = box && box.querySelector('input[type="file"]');
-        if (!input) res = { status: 'failed', msg: 'file box not found' };
+        const had = box && heldFile(box);
+        if (had) res = { status: 'unchanged', msg: 'already attached: ' + had };
+        else if (!input) res = { status: 'failed', msg: 'file box not found' };
         else {
           const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
           const dt = new DataTransfer();
@@ -981,11 +995,14 @@
           input.dispatchEvent(new Event('input', { bubbles: true }));
           safe(() => box.scrollIntoView({ block: 'center' }));
           let up = null;
-          for (let w = 0; w < 20 && !up; w++) {
+          let direct = '';  // some boxes (MGT-7A photo) have no Upload button: the file is listed as soon as it is chosen
+          for (let w = 0; w < 20 && !up && !direct; w++) {
             await sleep(300);
+            direct = heldFile(box);
             up = [...box.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && !b.disabled && /^upload$/i.test(strip(b.innerText || b.value || '')));
           }
-          if (!up) res = { status: 'failed', msg: 'Upload button did not become active' };
+          if (!up && direct) res = { status: 'filled', msg: 'attached ' + direct };
+          else if (!up) res = { status: 'failed', msg: 'Upload button did not become active' };
           else {
             await jitter(300, 600);
             up.click();
