@@ -71,6 +71,8 @@ def read_mgt7a(path):
     f["has_share_capital"] = radio("share capital")
     f["agm_held"] = radio("Annual General Meeting")
     f["agm_extension"] = radio("extension")
+    m = re.search(r"date of AGM[^\n]*?(\d\d/\d\d/\d{4})", text, re.I)
+    f["agm_date"] = m.group(1) if m else None  # that year's AGM: it is a members' meeting held DURING the following year
     f["compliance_ok"] = radio("compliances and disclosures")
     for key, pat in (("class", r"\(a\) \*?Class of Company"), ("category", r"\(b\) \*?Category of the Company"),
                      ("subcategory", r"\(c\) \*?Sub-category of the Company")):

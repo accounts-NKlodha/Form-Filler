@@ -14,7 +14,7 @@ from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
 # Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
-RULES_VERSION = 11
+RULES_VERSION = 12
 
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
@@ -406,7 +406,10 @@ def derive(facts, answers, fs):
 
     # ---- meetings and attendance
     bm = _dates(a.get("board_meetings"))
-    d.set("meeting_held_IXA", "1" if held else "0", Q)
+    prev_agm = f.get("agm_date") or a.get("prev_agm_date")  # members' meeting held during this year = last year's AGM
+    d.set("meeting_held_IXA", "1" if prev_agm else "0", LY if f.get("agm_date") else Q)
+    if not prev_agm:
+        d.todo.append("Members' meetings during the year: last year's AGM date not found; if one was held, enter the count and attach the Excel by hand.")
     if bm:
         d.set("meeting_held_IXB", str(len(bm)), Q)
     if held:

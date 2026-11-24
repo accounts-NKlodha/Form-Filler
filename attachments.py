@@ -57,8 +57,10 @@ def make(folder, facts, answers, fy_label):
         made.append((out.name, f"{len(rows)} board meetings" + ("" if all_att else ": enter attendance per meeting")))
 
     mm_src = _find(folder, r"meeting of members")
-    agm = answers.get("agm_date")
-    held = str(answers.get("agm_held") or "Yes").lower().startswith("y")
+    # Members' meetings held DURING the year: the AGM of the previous year (its date is on last year's form),
+    # not this year's AGM, which falls after the year end.
+    agm = (facts or {}).get("agm_date") or answers.get("prev_agm_date")
+    held = bool(agm)
     if mm_src and agm and held:
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Meeting of members - {fy_label}.xlsm"
@@ -66,7 +68,7 @@ def make(folder, facts, answers, fy_label):
         entitled = last.get("entitled") or (facts or {}).get("n_holders_listed")
         _rewrite(mm_src, out, "Sheet1", 2, [["AGM", datetime.strptime(agm, "%d/%m/%Y"), entitled,
                                              entitled if all_att else None, 100 if all_att else None]])
-        made.append((out.name, "AGM row"))
+        made.append((out.name, f"last year's AGM, held {agm}"))
 
     sh_src = _find(folder, r"shareholder", shared=False)  # never another company's list
     if sh_src and not str(answers.get("holders_changed") or "No").lower().startswith("y"):
