@@ -72,6 +72,18 @@ class Readers(unittest.TestCase):
         d = portal.read(g3b("032026", taxable=2500.5))
         self.assertEqual((d["gstin"], d["period"], d["figures"]["outward"]["taxable"]), (G, "032026", Decimal("2500.5")))
 
+    def test_gstr1_detail_is_not_taken_for_gstr2a(self):
+        # the portal's GSTR-1 download also carries "cfs" on its b2b rows
+        doc = {"gstin": G, "fp": "102025", "filing_typ": "M", "fil_dt": "11-11-2025",
+               "b2b": [{"ctin": "03AAAAA0000A1Z5", "cfs": "N", "inv": [{"inum": "1", "itms": [{"itm_det": dict(t(18), txval=100)}]}]}],
+               "b2cs": [dict(t(0, 9, 9), txval=100, rt=18)],
+               "hsn": {"hsn_b2b": [dict(t(18), txval=100, hsn_sc="8415", rt=18, uqc="NOS", qty=1)], "hsn_b2c": [dict(t(0, 9, 9), txval=100, hsn_sc="8415", rt=18)]}}
+        r = portal.read(json.dumps(doc).encode())
+        self.assertEqual(r["kind"], "gstr1")
+        f = r["figures"]
+        self.assertEqual((f["b2b"]["igst"], f["b2cs"]["taxable"], f["hsn"]["taxable"], len(f["hsn_rows"]), f["hsn_rows"][0]["part"]),
+                         (Decimal(18), Decimal(100), Decimal(200), 2, "B2B"))
+
     def test_rubbish_is_refused(self):
         for raw in (b"hello", b"[]", b'{"data": {}}', b"PK\x03\x04broken", json.dumps({"data": {"gstin": G, "sec_sum": []}}).encode()):
             with self.assertRaises(portal.Unrecognised):

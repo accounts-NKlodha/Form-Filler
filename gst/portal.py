@@ -85,6 +85,8 @@ def read(raw, name=""):
         out = dict(kind="gstr1_summary", gstin=d.get("gstin"), period=d.get("ret_period"), figures=_g1sum(d))
     elif "itcsumm" in d:
         out = dict(kind="gstr2b", gstin=d.get("gstin"), period=d.get("rtnprd"), figures=_g2b(d))
+    elif "fp" in d and "gstin" in d and any(k in d for k in ("filing_typ", "fil_dt", "gt", "hsn", "doc_issue", "b2cs", "b2cl", "exp", "nil")):
+        out = dict(kind="gstr1", gstin=d.get("gstin"), period=d.get("fp"), figures=_g1(d))   # its b2b rows carry "cfs" too, like GSTR-2A
     elif "fp" in d and "gstin" in d and (("b2b" in d and d["b2b"] and "cfs" in d["b2b"][0]) or "tds" in d or "tcs" in d or
                                          ("cdn" in d and d["cdn"] and "cfs" in d["cdn"][0])):
         out = dict(kind="gstr2a", gstin=d.get("gstin"), period=d.get("fp"), figures=_g2a(d))
@@ -202,14 +204,29 @@ def _g2a(d):
 
 
 def _g1(d):
-    out = dict(b2b=dict(tax({}), taxable=ZERO, documents=0))
-    for s in d.get("b2b") or []:
-        for doc in s.get("inv") or []:
-            t = _items(doc)
-            for k in TAXES + ("taxable",):
-                out["b2b"][k] += t[k]
-            out["b2b"]["documents"] += 1
-    hsn = (d.get("hsn") or {})
-    rows = (hsn.get("data") or []) + (hsn.get("hsn_b2b") or []) + (hsn.get("hsn_b2c") or []) if isinstance(hsn, dict) else []
-    out["hsn_rows"] = len(rows)
+    """GSTR-1 as filed, from the portal's offline download: invoice counts and totals by section, and the HSN rows."""
+    row = lambda: dict(tax({}), taxable=ZERO, documents=0)
+    out = dict(b2b=row(), b2cl=row(), b2cs=row(), notes=row(), hsn=row())
+    for key, docs, into in (("b2b", "inv", "b2b"), ("b2cl", "inv", "b2cl"), ("cdnr", "nt", "notes")):
+        for s in d.get(key) or []:
+            for doc in s.get(docs) or []:
+                t = _items(doc)
+                sign = -1 if into == "notes" and str(doc.get("ntty", "")).upper() == "C" else 1
+                for k in TAXES + ("taxable",):
+                    out[into][k] += sign * t[k]
+                out[into]["documents"] += 1
+    flat = lambda r: dict(tax(r, ("iamt", "camt", "samt", "csamt")), taxable=D(r.get("txval")))
+    for r in d.get("b2cs") or []:
+        for k, v in flat(r).items():
+            out["b2cs"][k] += v
+        out["b2cs"]["documents"] += 1
+    hsn = d.get("hsn") if isinstance(d.get("hsn"), dict) else {}
+    rows = [dict(flat(r), hsn=str(r.get("hsn_sc") or ""), rate=D(r.get("rt")), uqc=str(r.get("uqc") or ""), qty=D(r.get("qty")), part=part)
+            for part, key in (("", "data"), ("B2B", "hsn_b2b"), ("B2C", "hsn_b2c")) for r in hsn.get(key) or [] if isinstance(r, dict)]
+    for r in rows:
+        for k in TAXES + ("taxable",):
+            out["hsn"][k] += r[k]
+    out["hsn"]["documents"] = len(rows)
+    out["hsn_rows"] = rows
+    out["filed_on"] = str(d.get("fil_dt") or "")
     return out
