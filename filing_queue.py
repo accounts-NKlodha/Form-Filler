@@ -64,6 +64,25 @@ def form_url(slug):
 
 # ---------------------------------------------------------------- attachments
 
+# Excel files uploaded through an "Upload Excel" button (no file box on the form): kind -> (button key ending,
+# file name pattern in the client's attachments folder, heading the button must sit under, title)
+XL = {"mgt7a": [("xl_members", "panel1641551788472-panel_copy_copy_copy-guidebutton_copy_cop_1466332206", r"meeting of members",
+                 r"A\s+MEMBERS", "Meetings of members (Excel)"),
+                ("xl_board", "panel1641552137996-panel_copy_copy_copy-guidebutton_copy_cop_1466332206", r"board\s*meeting",
+                 r"B\s+BOARD MEETINGS", "Board meetings (Excel)")]}
+
+
+def excel_files(folder, slug):
+    """{kind: Path} of this year's MCA Excel attachments the app prepared (clients/<c>/attachments)."""
+    import re
+    d, out = Path(folder) / "attachments", {}
+    for kind, _, pat, _, _ in XL.get(slug, []):
+        hits = sorted(p for p in d.glob("*.xls*") if re.search(pat, p.name, re.I) and not p.name.startswith("~$")) if d.exists() else []
+        if hits:
+            out[kind] = hits[-1]
+    return out
+
+
 def attachment_files(folder, slug):
     """{element: Path} of the files staff uploaded for this form."""
     out = {}
@@ -332,6 +351,13 @@ def plan(slug):
         if f and path:
             p["attachments"].append({"code": f["code"], "key": f["key"], "domBase": f["domBase"], "som": f["som"], "label": f["label"],
                                      "kind": el, "file": path.name, "url": f"/queue/file?job={j['id']}&el={el}"})
+    xl = excel_files(folder, slug)
+    buttons = {b["key"]: b for b in m.load_dump(slug).get("buttons") or []}
+    for kind, tail, _, heading, title in XL.get(slug, []):
+        key = next((k for k in buttons if k.endswith(tail)), None)
+        if key and xl.get(kind):
+            p["attachments"].append({"code": kind, "key": key, "button": "guideContainer-" + key + "__", "heading": heading, "label": title,
+                                     "kind": kind, "file": xl[kind].name, "url": f"/queue/file?job={j['id']}&el={kind}"})
     # Mandatory attachments not there yet: the tool fills and saves every page before them, then holds this form
     # as "last page pending" and goes on to the next client.
     p["pendingAttachments"] = [{"domBase": by_name[el]["domBase"], "label": by_name[el]["label"], "title": title.split("(")[0].strip()}
@@ -344,7 +370,7 @@ def file_json(job_id, el):
     j = _job(q, int(job_id or 0))
     if not j:
         raise FileNotFoundError("no such job")
-    p = attachment_files(app.folder_of(j["client"]), j["slug"]).get(el)
+    p = attachment_files(app.folder_of(j["client"]), j["slug"]).get(el) or excel_files(app.folder_of(j["client"]), j["slug"]).get(el)
     if not p:
         raise FileNotFoundError(f"no file for {el}")
     return {"name": p.name, "b64": base64.b64encode(p.read_bytes()).decode("ascii")}

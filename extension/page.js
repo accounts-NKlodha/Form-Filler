@@ -27,6 +27,67 @@
   const GENERIC = /^(text ?box|text ?area|numeric ?box|date ?picker|drop ?down( ?list)?|radio ?button|check ?box|switch|field|untitled)\s*\d*$/i;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const jitter = (a, b) => sleep(a + Math.random() * (b - a));
+  // "Upload Excel" buttons (meetings on MGT-7A): the button opens a file chooser through a hidden file input.
+  function xlButton(a) {
+    const els = [...document.querySelectorAll(`[id^="${a.button}"]`)];
+    const b = els.find(e => /^(button|a|input)$/i.test(e.tagName) && e.offsetParent !== null) || els.map(e => e.querySelector('button, a, input[type="button"]')).find(e => e && e.offsetParent !== null);
+    return b || null;
+  }
+  function headingAbove(el) {
+    // The nearest "A MEMBERS..." / "B BOARD MEETINGS" / "C ATTENDANCE" heading before this element, '' if none is found.
+    const rx = /\b(A\s+MEMBERS|B\s+BOARD MEETINGS|C\s+ATTENDANCE)/gi;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      for (let p = n.previousElementSibling; p; p = p.previousElementSibling) {
+        const all = ((p.innerText || '').match(rx) || []);
+        if (all.length) return all[all.length - 1];
+      }
+    }
+    return '';
+  }
+  async function xlUpload(a, req) {
+    const btn = xlButton(a);
+    if (!btn) return { status: 'manual', msg: 'Upload Excel button not found: upload ' + req.name + ' by hand' };
+    const head = headingAbove(btn);
+    if (head && a.heading && !new RegExp(a.heading, 'i').test(head)) return { status: 'manual', msg: 'could not confirm the box for ' + req.name + ': upload by hand' };
+    safe(() => sessionStorage.setItem('ff_xl_' + a.kind, 'tried'));
+    // Catch the hidden file input the button opens, so no Windows file window appears.
+    let input = null;
+    const proto = HTMLInputElement.prototype, orig = proto.click;
+    proto.click = function () { if (this.type === 'file') { input = this; return; } return orig.apply(this, arguments); };
+    const origPicker = window.showOpenFilePicker;
+    try {
+      safe(() => btn.scrollIntoView({ block: 'center' }));
+      await jitter(300, 600);
+      btn.click();
+      for (let w = 0; w < 15 && !input; w++) await sleep(200);
+    } finally { proto.click = orig; window.showOpenFilePicker = origPicker; }
+    if (!input) {
+      const box = btn.closest('[class*="guidePanelNode"], [class*="guidepanel"]') || btn.parentElement;
+      input = box && box.querySelector('input[type="file"]');
+    }
+    if (!input) return { status: 'manual', msg: 'the portal opened no file box: upload ' + req.name + ' by hand' };
+    const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], req.name, { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // What the portal says about the file (a pop-up), then close it.
+    let said = '';
+    for (let w = 0; w < 24 && !said; w++) {
+      await sleep(500);
+      const dlg = [...document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"]')].find(d => d.offsetParent !== null && (d.innerText || '').trim());
+      if (dlg) {
+        said = (dlg.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        const okb = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => b.offsetParent !== null && /^(ok|close|okay)$/i.test((b.innerText || b.value || '').trim()));
+        if (okb) { okb.click(); await sleep(300); }
+      }
+    }
+    const bad = /error|invalid|not match|fail|incorrect|mismatch|unable/i.test(said);
+    if (bad) return { status: 'manual', msg: 'portal did not take ' + req.name + ': ' + said };
+    safe(() => sessionStorage.setItem('ff_xl_' + a.kind, 'done'));
+    return { status: 'filled', msg: 'uploaded ' + req.name + (said ? ' (portal: ' + said + ')' : ' (no message from the portal: check the box)') };
+  }
   // Name of the file an attachment box already shows (a listed item or a link ending in a file extension), else ''.
   function heldFile(box) {
     try {
@@ -963,6 +1024,14 @@
       else if (req.op === 'attachState') {
         // For autoSave plans (ADT-1): is this attachment on screen, and does it already hold a file?
         res = req.list.map(a => {
+          if (a.button) {
+            const b = xlButton(a);
+            if (!b) return 'other-page';
+            const box = b.closest('[class*="guidePanelNode"], [class*="guidepanel"]') || b.parentElement;
+            const asks = /upload a excel|upload an excel/i.test((box && box.innerText) || '');
+            const done = safe(() => sessionStorage.getItem('ff_xl_' + a.kind), '');
+            return done && !asks ? 'has-file' : 'empty';
+          }
           const els = widgets(a.domBase).filter(isShown);
           const any = document.querySelector(`[id^="${a.domBase}"]`);
           const box = (els[0] || any) && (els[0] || any).closest('[class*="guideFieldNode"]');
@@ -980,11 +1049,13 @@
         autoNotices = true;
         // Choose the PDF (sent by the local server) and press this attachment's own Upload button.
         const a = req.att;
+        if (a.button) res = await xlUpload(a, req);
         const any = widgets(a.domBase).find(isShown) || document.querySelector(`[id^="${a.domBase}"]`);
         const box = any && any.closest('[class*="guideFieldNode"]');
         const input = box && box.querySelector('input[type="file"]');
         const had = box && heldFile(box);
-        if (had) res = { status: 'unchanged', msg: 'already attached: ' + had };
+        if (a.button) { /* handled above */ }
+        else if (had) res = { status: 'unchanged', msg: 'already attached: ' + had };
         else if (!input) res = { status: 'failed', msg: 'file box not found' };
         else {
           const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
