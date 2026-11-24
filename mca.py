@@ -807,6 +807,9 @@ def convert(f, v):
     return {"value": str(v).strip()}
 
 
+OVERWRITE = {"Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "preference_shareClass"}
+
+
 def make_plan(xlsx, slug):
     xlsx = Path(xlsx)
     wb = openpyxl.load_workbook(xlsx, data_only=True)
@@ -829,6 +832,9 @@ def make_plan(xlsx, slug):
         # Previous-year figures: the extension keeps whatever MCA pre-filled.
         if (mp.get(f["key"]) or {}).get("period") == "PY" or re.search(r"previous", f.get("som") or "", re.I):
             e["prev"] = True
+        # Boxes the portal opens with its own default (1 class) where the form's answer is ours (0): replace it.
+        if f.get("name") in OVERWRITE:
+            e["overwrite"] = True
         return e
 
     for name, kind, gkey in sheets:

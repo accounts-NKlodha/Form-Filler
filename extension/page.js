@@ -459,7 +459,8 @@
         return { ...entry, status: 'unchanged', msg: 'kept MCA pre-filled previous-year figure' };
       }
     }
-    if (f.type !== 'checkbox' && hasValue(f, els, cmp)) {
+    const curV = () => (cmp ? safe(() => cmp.value) : domValue(f, els));
+    if (f.type !== 'checkbox' && hasValue(f, els, cmp) && !(f.overwrite && !matches(f, curV()))) {
       return { ...entry, status: 'unchanged', msg: matches(f, cmp ? safe(() => cmp.value) : domValue(f, els)) ? '' : 'already has a value: kept' };
     }
     if (f.type === 'dropdown' && els.length && els[0].tagName === 'SELECT' && f.display) {
