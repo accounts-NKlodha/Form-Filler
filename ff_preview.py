@@ -13,6 +13,75 @@ SRC = {"tally": ("Tally", "#1f7a4d"), "lastyear": ("Last year's form", "#8a6d1a"
        "ai": ("Local AI, confirmed by staff", "#7a3e9d"), "auto": ("Worked out", "#5c6470")}
 CY, PY = "Current reporting period", "Previous reporting period"
 
+# Fields whose label on the portal is a placeholder ("Text Box", "1", an internal name): what the box is, in words.
+NICE = {
+    "datepicker_to_date": "(b) Financial year for which the annual return is being filed (To date)",
+    "number_associate_company": "Number of associate companies (including joint ventures)",
+    "preference_shareClass": "Preference shares: number of classes",
+    "Debenture3NoNConvertiNC": "Non-convertible debentures: number of classes",
+    "partiallyConDebNumOfClasses": "Partly convertible debentures: number of classes",
+    "fullyConDebNumOfClasses": "Fully convertible debentures: number of classes",
+    "SecutiryOtherShareDebeunt": "Securities other than shares and debentures: number",
+    "individual_female": "Members other than promoters: individual, female", "individual_male": "Members other than promoters: individual, male",
+    "individual_transgender": "Members other than promoters: individual, transgender",
+    "other_than_individuals": "Members other than promoters: other than individuals",
+    "meeting_held_IXA": "Members' meetings: number of meetings held", "meeting_held_IXB": "Board meetings: number of meetings held",
+    "details_penalities_ch": "A Details of penalties or punishment imposed on company, directors or officers",
+    "details_of_offenses_ch": "B Details of compounding of offences",
+    "dinPanMemberShipNum": "DIN, PAN or membership number of the designated person",
+    "textbox1641789712635": "Board resolution number", "decDatepicker": "Date of the board resolution",
+    "DeclarationDesignation": "Declaration: designation of the person signing", "DeclarationDINOfTheDirector": "Declaration: DIN of the director signing",
+    "whetherAnyOperating": "40 Whether any operating lease has been converted to financial lease or vice-versa",
+}
+NIL_TICK = {"details_penalities_ch", "details_of_offenses_ch", "ivNill"}  # a ticked box here means "Nil"
+MGT7A_SEC = [  # (test on field name / internal panel, section heading in the form's words)
+    (lambda n, k: n in ("turnoverV", "NetWorthOfTeCompany"), "V Turnover and net worth"),
+    (lambda n, k: n.startswith(("individual_", "other_than_individuals")), "VII Number of promoters, members and debenture holders"),
+    (lambda n, k: n.startswith("meeting_held") or n == "AttendanceOfDirectorDate", "VIII Meetings of members and board of directors"),
+    (lambda n, k: n == "number_ceo_cfo_remuneration", "IX Remuneration of directors and key managerial personnel"),
+    (lambda n, k: n == "radiobutton1641559612315", "X Certification of compliances and disclosures"),
+    (lambda n, k: n in ("details_penalities_ch", "details_of_offenses_ch"), "XI Penalty and punishment"),
+    (lambda n, k: n == "number_share_debentureholder", "Details of shareholders and debenture holders"),
+    (lambda n, k: "businessactivitiespanel" in k, "II and III Principal business activities and associate companies"),
+    (lambda n, k: "sharecapitalanddebenturespanel" in k, "IV Share capital, debentures and other securities"),
+    (lambda n, k: "shareholdingpatternpanel" in k, "VI Shareholding pattern"),
+    (lambda n, k: "promotersanddirectorspanel" in k, "VII Number of promoters, members and debenture holders"),
+    (lambda n, k: "attachmentanddeclarationsection" in k, "Attachments and declaration"),
+    (lambda n, k: "companydetailsinformation" in k, "I Registration and other details"),
+]
+
+
+def _table_title(t):
+    title, key = str(t.get("title") or ""), str(t.get("groupKey") or "")
+    if "panel_2074267803_cop" in key:
+        return "Signatories of the board's report"
+    if "panel_2074267803-" in key:
+        return "Signatories of the financial statements"
+    if title == "auditorDetailsInnerPanel":
+        return "Auditor details"
+    if re.fullmatch(r"Row \d+", title) or not title:
+        return "Repeating rows"
+    title = re.sub(r"(?<=[a-z])(?=[A-Z])|_", " ", title)
+    title = re.sub(r"\b(inner|panel)\b", " ", title, flags=re.I)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title[:1].upper() + title[1:]
+
+
+def _col_label(c):
+    import mca
+    lab = mca.clean_label(str(c.get("label") or ""))
+    return "Date" if re.match(r"(text box|date picker)\s+please enter date", lab, re.I) else lab
+
+
+def _mgt7a(f):
+    n = f.get("name") or ""
+    k = [re.sub(r"[^a-z0-9]", "", str(x).lower()) for x in f.get("section") or []]
+    for test, title in MGT7A_SEC:
+        if test(n, k):
+            return title
+    return f.get("group") or "Other details"
+
+
 CSS = """<style>
 .pv{margin-top:12px;border:1px solid #c9ced6;background:#fff;overflow-x:auto}
 .pv .seg{background:#1d3c6e;color:#fff;font-weight:600;font-size:15px;padding:10px 14px}
@@ -57,6 +126,10 @@ def _col(f, col, row):
 def _box(r, ui, text=False):
     v = r["value"]
     val = ui.money(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else ui.esc(v)
+    if r.get("_nil_tick"):  # the form has a "Nil" tick box here: say what the tick means
+        val = "Nil (box ticked)" if str(v).strip().lower() in ("yes", "true", "1") else "Not ticked: details to be entered"
+    elif r.get("_tick"):
+        val = "Ticked" if str(v).strip().lower() in ("yes", "true", "1") else "Not ticked"
     word, colour = SRC.get(r["category"], (r["category"], "#5c6470"))
     how = r.get("built") or r.get("picked") or ""
     tip = word + (f": {how}" if how and how != word else "")
@@ -115,8 +188,11 @@ def form_html(folder, slug, ui):
     blocks = []  # [segment, part, [(f, r)]]
     for r in rows:
         f = sc.get(r["code"]) or {"label": mca.clean_label(r["label"]), "segment": "", "group": r.get("section") or "Other details", "name": ""}
-        f = dict(f, label=mca.clean_label(f.get("label") or r["label"]))
-        k = (f.get("segment") or "", f.get("group") or "Other details")
+        f = dict(f, label=NICE.get(f.get("name") or "") or mca.clean_label(f.get("label") or r["label"]))
+        if slug == "mgt7a":
+            f["segment"], f["group"] = _mgt7a(f), ""
+        r = dict(r, _nil_tick=(f.get("name") in NIL_TICK), _tick=(f.get("type") == "checkbox"))
+        k = (f.get("segment") or "", f.get("group") if f.get("segment") else (f.get("group") or "Other details"))
         if blocks and (blocks[-1][0], blocks[-1][1]) == k:
             blocks[-1][2].append((f, r))
         else:
@@ -127,9 +203,33 @@ def form_html(folder, slug, ui):
             html.append(f"<div class=seg>{ui.esc(seg)}</div>")
         last = seg or last
         only_nil = all(_nil(r["value"]) for _, r in items)
-        html.append(f"<div class=\"{'nil' if only_nil else ''}\"><div class=part>{ui.esc(part)}</div><div class=blk>{_part(items, ui)}</div></div>")
+        bar = f"<div class=part>{ui.esc(part)}</div>" if part and part != seg else ""
+        html.append(f"<div class=\"{'nil' if only_nil and bar else ''}\">{bar}<div class=blk>{_part(items, ui)}</div></div>")
     nils = sum(1 for r in rows if _nil(r["value"]))
-    return "".join(html), len(rows), nils
+    # Repeating tables (share capital classes, directors, auditors ...): the rows the tool adds, as on the form.
+    extra = 0
+    try:
+        tables = [t for t in mca.make_plan(app.inputs_path(folder), slug).get("tables") or [] if t.get("rows")]
+    except Exception:  # noqa: BLE001
+        tables = []
+    if tables:
+        html.append("<div class=seg>Tables on the form: rows Form Filler adds</div>")
+    for t in tables:
+        cols = []
+        for row in t["rows"]:
+            for c in row:
+                lab = _col_label(c)
+                if lab not in cols:
+                    cols.append(lab)
+        body = ""
+        for i, row in enumerate(t["rows"], 1):
+            by = {_col_label(c): c for c in row}
+            extra += len(row)
+            body += f"<tr><td>Row {i}</td>" + "".join(
+                f"<td><div class=\"box t\">{ui.esc(str(by[c].get('display', by[c].get('value', ''))) if c in by else '') or '&nbsp;'}</div></td>" for c in cols) + "</tr>"
+        head = "<tr><th>&nbsp;</th>" + "".join(f"<th style=\"text-align:left\">{ui.esc(c[:60])}</th>" for c in cols) + "</tr>"
+        html.append(f"<div class=part>{ui.esc(_table_title(t))}</div><div class=blk><table>{head}{body}</table></div>")
+    return "".join(html), len(rows) + extra, nils
 
 
 def render(folder, ui):
