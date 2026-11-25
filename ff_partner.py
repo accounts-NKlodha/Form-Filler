@@ -181,7 +181,7 @@ def page(msg="", names=False):
     tiles = ("<div style=\"display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-bottom:24px\">"
              + tile("Forms with both times", n, f"of {len(data)} on this screen")
              + tile("By hand", dur(hand) if n else "-", "the firm's usual time per form")
-             + tile("By Form Filler", dur(tool) if n else "-", "from the fill logs")
+             + tile("By Compliance Copilot", dur(tool) if n else "-", "from the fill logs")
              + tile("Time saved", dur(hand - tool) if n and hand > tool else "-", f"{round(100 * (hand - tool) / hand)}% less" if n and hand > tool else "")
              + "</div>")
     inputs = "".join(f"<label class=mut style=\"display:flex;gap:6px;align-items:center\">{lab}"
@@ -193,7 +193,7 @@ def page(msg="", names=False):
     note = ("<p class=mut>Time by tool is the latest run that filled the form, from the first field to the last Save, as logged by the Chrome extension. "
             "Login, captcha, DSC and payment are done by staff and are not in either figure."
             + (f" {untimed} run{'s' if untimed != 1 else ''} from before 24 Nov 2026 carry no start time and show as \"at least\"." if untimed else "") + "</p>")
-    table = ("<div class=card><table><tr><th>Client</th><th>Form</th><th class=n>By hand</th><th class=n>By Form Filler</th><th class=n>Saved</th>"
+    table = ("<div class=card><table><tr><th>Client</th><th>Form</th><th class=n>By hand</th><th class=n>By Compliance Copilot</th><th class=n>Saved</th>"
              "<th class=n>Fields filled</th><th class=n>Left for staff</th><th>Status</th></tr>" + "".join(trs) + "</table></div>") if trs else \
         "<div class=card>No form has been filled yet. Times appear here after the first run on MCA.</div>"
     toggle = (f"<a class=btn href=\"/partner{'?names=1' if not names else ''}\">{'Show client names' if not names else 'Hide client names'}</a>"

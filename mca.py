@@ -1163,7 +1163,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(open_browser=True, lan=False):
     sys.stdout.reconfigure(line_buffering=True)
     srv = ThreadingHTTPServer(("0.0.0.0" if lan else "127.0.0.1", PORT), Handler)
-    print(f"Form Filler on http://127.0.0.1:{PORT}" + (f"  (office LAN: http://<this PC's IP>:{PORT})" if lan else "") + "  (Ctrl+C to stop)")
+    print(f"Compliance Copilot on http://127.0.0.1:{PORT}" + (f"  (office LAN: http://<this PC's IP>:{PORT})" if lan else "") + "  (Ctrl+C to stop)")
     ff_jobs.recover()
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()

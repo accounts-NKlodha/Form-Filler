@@ -202,10 +202,10 @@ def shell(title, body, active="", msg="", refresh=0):
         nav.append(f"<a class=\"nv{' on' if href == active else ''}\" href=\"{href}\">"
                    f"{f'<span class=k>{k}</span>' if k else '<span class=k style=border:0></span>'}{name}</a>")
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>{esc(title)} · Form Filler</title>
+<title>{esc(title)} · Compliance Copilot</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
-<aside><a class=brand href="/data">MCA automation<small>Form Filler · N K Lodha &amp; Co</small></a>
+<aside><a class=brand href="/data">Compliance Copilot<small>MCA automation · N K Lodha &amp; Co</small></a>
 {''.join(nav)}
 <div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div>
 <label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Recorded on approvals"></label></aside>
@@ -1235,7 +1235,7 @@ def handle_post(path, query, body, form):
             import ff_signed
             folder = app.folder_of(name)
             opened = ff_signed.open_folder(folder)
-            return _back("/review", "Folder opened on the PC that runs Form Filler." if opened else "The folder can be opened only on a Windows PC.", c=folder.name, tab="reports")
+            return _back("/review", "Folder opened on the PC that runs Compliance Copilot." if opened else "The folder can be opened only on a Windows PC.", c=folder.name, tab="reports")
         if path == "/ff/docs":
             folder = app.folder_of(name)
             ff_jobs.add(folder.name, "docs", user)
