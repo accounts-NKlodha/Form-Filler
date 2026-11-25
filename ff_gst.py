@@ -12,7 +12,7 @@ from urllib.parse import quote
 import app
 import ff_audit
 import ff_ui
-from gst import gstr9, portal, work
+from gst import gstr9, portal, recon, work
 
 TOKEN = secrets.token_urlsafe(18)   # new on every start; a web page cannot read it, so it cannot post files here
 work._trail = lambda folder, text, by, **data: ff_audit.event(folder, "gst", text, by=by or "staff", **data)
@@ -87,7 +87,7 @@ def page_list(fy, msg=""):
 
 def _tabs(folder, g, fy, on):
     return "<div class=tabs>" + "".join(f"<a{' class=on' if k == on else ''} href=\"{_link(folder, g, fy, tab=k)}\">{t}</a>"
-                                        for k, t in (("", "Files and checks"), ("draft", "GSTR-9 draft"))) + "</div>"
+                                        for k, t in (("", "Files and checks"), ("recon", "Reconciliations"), ("draft", "GSTR-9 draft"))) + "</div>"
 
 
 def page_draft(folder, g, fy, msg=""):
@@ -120,6 +120,48 @@ def page_draft(folder, g, fy, msg=""):
             "the cleared review points and tables 10 to 18 are still to come in. Cess is left out of this view when nil.</p></div>")
     body = (top + "<div class=g12><div class=\"card s9\"><div class=h>GSTR-9 draft, every line with its source</div><table><thead><tr><th>Table</th><th>Line</th>"
             "<th class=n>Taxable value</th><th class=n>IGST</th><th class=n>CGST</th><th class=n>SGST</th><th>Source</th><th></th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>{side}</div>")
+    return ff_ui.shell(folder.name + " GST", body, "/gst", msg)
+
+
+def page_recon(folder, g, fy, msg=""):
+    st = work.status(folder, g, fy)
+    have = work.inputs(folder, g, fy)
+    steps = recon.build(fy, st["data"], st["checks"], have)
+    tags = {"ok": ff_ui.tag("Ties", "good"), "point": ff_ui.tag("Review point", "need"),
+            "needs": ff_ui.tag("Needs input", "badt"), "queued": ff_ui.tag("Files in, matching to be built", "work")}
+    rows = ""
+    for s in steps:
+        today = ""
+        for c in s["checks"]:
+            if c["state"] == "needs":
+                res = "needs " + esc(c["missing"])
+            elif c["state"] == "ok":
+                res = "ties"
+            else:
+                res = "difference Rs " + money(c["diff"]) + (", cleared" if c.get("cleared") else (", %d months differ" % c["gaps"] if c["gaps"] else ""))
+            today += f"<div><a href=\"{_link(folder, g, fy, check=c['id'])}#detail\">{esc(c['title'])}</a>: {res}</div>"
+        for label, amount in s["facts"]:
+            today += f"<div>{esc(label)}: Rs {money(amount)}</div>"
+        if s["checks"] and not s["full"]:
+            today += "<div class=mut>From the portal files only. The match with the books starts when the input is in.</div>"
+        need = ("<div>Still needed: " + esc(", ".join(s["missing"])) + "</div>") if s["missing"] else ""
+        imp = " " + ff_ui.tag("Important", "need") if s["important"] else ""
+        rows += (f"<tr><td class=n>{s['no']}</td><td><span style=\"font-weight:500\">{esc(s['a'])}</span> against "
+                 f"<span style=\"font-weight:500\">{esc(s['b'])}</span>{imp}" + (f"<div class=mut>{esc(s['note'])}</div>" if s["note"] else "")
+                 + f"</td><td>{today or '<span class=mut>Nothing to show yet</span>'}{need}</td><td>{tags[s['state']]}</td></tr>")
+    base = work.area(folder, g, fy) / "books"
+    ins = "".join(f"<tr><td><span style=\"font-weight:500\">{esc(n)}</span><div class=mut>{esc(how)}</div><div class=mut>books\\{k}</div></td>"
+                  f"<td class=n>{have.get(k, 0) or '-'}</td></tr>" for k, n, how in recon.INPUTS)
+    count = lambda state: sum(1 for s in steps if s["state"] == state)
+    side = (f"<div class=\"card s4\"><div class=h>Inputs from the books and other portals</div>"
+            f"<p style=\"margin:0 0 8px\">{count('ok')} tie, {count('point')} have a review point, {count('needs')} need input"
+            + (f", {count('queued')} have their files in" if count("queued") else "") + ".</p>"
+            f"<table><thead><tr><th>Input</th><th class=n>Files</th></tr></thead><tbody>{ins}</tbody></table>"
+            f"<p class=mut style=\"margin:12px 0 0\">Folder: {esc(str(base))}</p></div>")
+    body = (ff_ui.head(f"<a href=\"/gst?fy={fy}\">GST annual returns</a> / {g} / FY {fy}", folder.name) + _tabs(folder, g, fy, "recon")
+            + "<div class=g12><div class=\"card s8\"><div class=h>Reconciliations, in the order of review</div>"
+            "<table><thead><tr><th class=n>No.</th><th>Reconciliation</th><th>What the files show today</th><th>State</th></tr></thead>"
             f"<tbody>{rows}</tbody></table></div>{side}</div>")
     return ff_ui.shell(folder.name + " GST", body, "/gst", msg)
 
@@ -214,6 +256,8 @@ def handle_get(path, q):
             folder, g = _reg(q)
         except ValueError as e:
             return 404, ff_ui.shell("GST", ff_ui.head("GST", "Not found") + f"<p>{esc(e)} <a href=/gst>Back to GST</a></p>", "/gst"), "text/html"
+        if q.get("tab") == "recon":
+            return 200, page_recon(folder, g, fy, msg), "text/html"
         if q.get("tab") == "draft":
             return 200, page_draft(folder, g, fy, msg), "text/html"
         return 200, page_client(folder, g, fy, q.get("check", ""), msg), "text/html"

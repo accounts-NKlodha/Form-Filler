@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from gst import checks, gstr9, portal, work  # noqa: E402
+from gst import checks, gstr9, portal, recon, work  # noqa: E402
 
 G = "33ABCDE1234F1Z5"
 FY = "2025-26"
@@ -189,6 +189,39 @@ class Draft(unittest.TestCase):
         self.assertEqual(self.line(d, "4N")["amounts"]["taxable"], Decimal(12000 - 150))
 
 
+class Flow(unittest.TestCase):
+    def steps(self, have=None, **over):
+        data = data_of(year(**over))
+        results = checks.run(FY, data)
+        for c in results:
+            c["cleared"] = None
+        return {s["id"]: s for s in recon.build(FY, data, results, have or {})}
+
+    def test_fifteen_steps_in_the_partners_order(self):
+        s = list(self.steps().values())
+        self.assertEqual([x["no"] for x in s], list(range(1, 16)))
+        self.assertEqual((s[0]["a"], s[0]["b"]), ("GSTR-1", "Sales register"))
+        self.assertTrue(s[8]["important"] and s[8]["b"] == "Incoming e-way bills")
+
+    def test_gstr3b_against_gstr1_runs_on_portal_files(self):
+        self.assertEqual(self.steps()["g3b_g1"]["state"], "ok")
+        late = self.steps(gstr3b={"042025": g3b("042025", c=80), "052025": g3b("052025", c=100)})["g3b_g1"]
+        self.assertEqual(late["state"], "point")
+
+    def test_a_step_never_ties_without_its_input(self):
+        s = self.steps()["g2b_purchase"]
+        self.assertEqual((s["state"], s["missing"]), ("needs", ["Purchase register"]))
+        s = self.steps(have={"purchase_register": 1})["g2b_purchase"]
+        self.assertEqual((s["state"], s["missing"]), ("queued", []))
+
+    def test_einvoices_are_counted_from_gstr1(self):
+        doc = {"gstin": G, "fp": "042025", "filing_typ": "M", "b2b": [{"ctin": "33AAAAA0000A1Z5", "cfs": "Y", "inv": [
+            {"inum": "1", "irn": "abc", "itms": [{"itm_det": dict(t(0, 9, 9), txval=100)}]},
+            {"inum": "2", "itms": [{"itm_det": dict(t(0, 9, 9), txval=50)}]}]}]}
+        f = portal.read(json.dumps(doc).encode())["figures"]
+        self.assertEqual((f["b2b"]["documents"], f["einv"]["documents"], f["einv"]["taxable"]), (2, 1, Decimal("100")))
+
+
 class WorkArea(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -261,6 +294,14 @@ class WorkArea(unittest.TestCase):
         self.assertIn("cleared", self.log[-1][0])
         work.ingest(self.client, G, FY, g3b("062025", itc=(80, 80)), "Asha")      # the figure changes
         self.assertEqual(work.status(self.client, G, FY)["open"], 1)              # so the point is open again
+
+    def test_inputs_for_the_reconciliations_are_counted_from_the_books_folder(self):
+        self.assertEqual(work.inputs(self.client, G, FY), {})
+        d = work.area(self.client, G, FY) / "books" / "sales_register"
+        d.mkdir(parents=True)
+        (d / "sales.xlsx").write_bytes(b"x")
+        (d / "~$sales.xlsx").write_bytes(b"x")
+        self.assertEqual(work.inputs(self.client, G, FY), {"sales_register": 1})
 
     def test_default_year(self):
         import datetime as dt

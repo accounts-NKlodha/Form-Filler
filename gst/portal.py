@@ -209,7 +209,7 @@ def _g2a(d):
 def _g1(d):
     """GSTR-1 as filed, from the portal's offline download: invoice counts and totals by section, and the HSN rows."""
     row = lambda: dict(tax({}), taxable=ZERO, documents=0)
-    out = dict(b2b=row(), b2cl=row(), b2cs=row(), notes=row(), hsn=row())
+    out = dict(b2b=row(), b2cl=row(), b2cs=row(), notes=row(), hsn=row(), einv=dict(documents=0, taxable=ZERO))
     for key, docs, into in (("b2b", "inv", "b2b"), ("b2cl", "inv", "b2cl"), ("cdnr", "nt", "notes")):
         for s in d.get(key) or []:
             for doc in s.get(docs) or []:
@@ -218,6 +218,9 @@ def _g1(d):
                 for k in TAXES + ("taxable",):
                     out[into][k] += sign * t[k]
                 out[into]["documents"] += 1
+                if into == "b2b" and (doc.get("irn") or str(doc.get("srctyp", "")).lower().startswith("e-inv")):
+                    out["einv"]["documents"] += 1
+                    out["einv"]["taxable"] += t["taxable"]
     flat = lambda r: dict(tax(r, ("iamt", "camt", "samt", "csamt")), taxable=D(r.get("txval")))
     for r in d.get("b2cs") or []:
         for k, v in flat(r).items():

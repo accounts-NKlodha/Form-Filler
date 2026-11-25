@@ -14,7 +14,7 @@ import re
 import threading
 from pathlib import Path
 
-from . import checks, portal
+from . import checks, portal, recon
 
 GSTIN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
 FY = re.compile(r"^20[0-9]{2}-[0-9]{2}$")
@@ -195,6 +195,13 @@ def status(client_folder, gstin, fy):
                 points=sum(1 for c in results if c["state"] == "point"),
                 needs=sum(1 for c in results if c["state"] == "needs"),
                 files=sum(len(v) for v in data.values()))
+
+
+def inputs(client_folder, gstin, fy):
+    """Files staff have put under books/<input>/ for the reconciliations: {input key: number of files}."""
+    base = area(client_folder, gstin, fy) / "books"
+    return {k: sum(1 for p in (base / k).iterdir() if p.is_file() and not p.name.startswith(("_", "~", ".")))
+            for k, _, _ in recon.INPUTS if (base / k).is_dir()}
 
 
 def clear_point(client_folder, gstin, fy, check_id, user, note, treatment):
