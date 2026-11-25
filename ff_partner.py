@@ -124,6 +124,20 @@ def codes():
         return {}
 
 
+_PLAIN = {"private", "pvt", "pvt.", "limited", "ltd", "ltd.", "llp", "and", "&", "co", "co.", "company", "india", "opc", "(opc)", "(india)", "(p)", "p"}
+
+
+def mask(name):
+    """Client name partly hidden: first two letters of each word stay, the rest become dots; words like Private Limited stay."""
+    out = []
+    for w in str(name).replace("_", " ").split():
+        if w.lower() in _PLAIN or len(w) <= 2:
+            out.append(w)
+        else:
+            out.append(w[:2] + "".join("\u2022" if c.isalnum() else c for c in w[2:]))
+    return " ".join(out)
+
+
 def dur(sec):
     if sec is None:
         return ""
@@ -136,7 +150,6 @@ def page(msg="", names=False):
     import ff_ui as ui
     s = settings()
     manual = {k: v for k, v in s["manual"].items() if isinstance(v, (int, float)) and v > 0}
-    key = {} if names else codes()
     data = rows()
     hand = tool = n = 0
     untimed = 0
@@ -144,10 +157,7 @@ def page(msg="", names=False):
     extra = {}
     for r in data:
         run, m = r["run"], manual.get(r["slug"])
-        shown = key.get(r["client"].strip().lower())
-        if not shown and key:  # not in the key workbook: number it on this screen rather than show the name
-            shown = extra.setdefault(r["client"], f"Client {len(extra) + 1} (not in key)")
-        shown = shown or r["client"]
+        shown = r["client"] if names else mask(r["client"])
         j = r["job"] or {}
         st = {"submitted": ("Filed, SRN " + j.get("srn", "") if j.get("paid") else "Submitted: check and pay", "good" if j.get("paid") else "need"),
               "saved": ("Draft saved", "need"), "held": (j.get("note") or "Needs attention", "badt"), "filling": ("Filling now", "work"),
@@ -196,8 +206,7 @@ def page(msg="", names=False):
     table = ("<div class=card><table><tr><th>Client</th><th>Form</th><th class=n>By hand</th><th class=n>By Compliance Copilot</th><th class=n>Saved</th>"
              "<th class=n>Fields filled</th><th class=n>Left for staff</th><th>Status</th></tr>" + "".join(trs) + "</table></div>") if trs else \
         "<div class=card>No form has been filled yet. Times appear here after the first run on MCA.</div>"
-    toggle = (f"<a class=btn href=\"/partner{'?names=1' if not names else ''}\">{'Show client names' if not names else 'Hide client names'}</a>"
-              if KEYBOOK.exists() else "")
+    toggle = (f"<a class=btn href=\"/partner{'?names=1' if not names else ''}\">{'Show full client names' if not names else 'Mask client names'}</a>")
     body = ui.head("Partner review", "Time saved, form by form", toggle) + tiles + table + note + form
     return ui.shell("Partner review", body, "/partner", msg)
 
