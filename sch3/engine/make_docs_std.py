@@ -94,6 +94,8 @@ def main(cfg_path, xlsx, ly, out):
     BMS = [x.strip() for x in str(st.get("Board meeting dates", "")).split(",") if x.strip()]
     PRES = [x.strip() for x in str(st.get("Directors present at each board meeting", "")).split(",")]
     STRENGTH = str(st.get("Board strength (number of directors)", 2))
+    if not BMS: FLAGS.append("Board's report: no board meeting dates. Type them on Inputs for the forms, then draft again.")
+    elif not st.get("Board strength (number of directors)"): FLAGS.append("Board's report: board strength was not known, so 2 directors is shown for every meeting. Check the meetings table.")
     D1, D2 = str(st.get("Signing director 1 name") or "").upper(), str(st.get("Signing director 2 name") or "").upper()
     num = lambda x: ("0.00" if DEC else "0") if not x else inr(x, DEC)
 

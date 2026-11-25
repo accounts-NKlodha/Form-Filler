@@ -810,11 +810,40 @@ def ly_docs_dir(folder):
     return d
 
 
+def _meetings_to_setup(folder):
+    """Board meeting dates typed on Inputs for the forms go to the Setup rows the Board's report reads, so both say the same."""
+    cfg = load_cfg(folder)
+    st = cfg.setdefault("setup", {})
+    ans = {k: str(a or "").strip() for k, _, _, a, _ in app.questions(folder)[0]}
+    dates = [d.strip() for d in re.split(r"[,;\n]+", ans.get("board_meetings", "")) if d.strip()]
+    if not dates:
+        return
+    st["Board meeting dates"] = ", ".join(dates)
+    n = 0
+    try:
+        import lastyear
+        p = lastyear.find_last_mgt7a(folder)
+        f = lastyear.read_mgt7a(p) if p else {}
+        bm = f.get("board_meetings") or []
+        n = len(f.get("directors") or []) or int((bm[-1].get("directors") if bm else 0) or 0)
+    except Exception:  # noqa: BLE001
+        n = 0
+    if n and not ans.get("directors_changed", "").lower().startswith("y"):
+        st["Board strength (number of directors)"] = n
+        if ans.get("all_attended", "Yes").lower().startswith("y") or not ans.get("all_attended"):
+            st["Directors present at each board meeting"] = ", ".join([str(n)] * len(dates))
+    save_cfg(folder, cfg)
+
+
 def make_docs(folder, user="agent"):
     """Notice, board's report, auditor's report + CARO, lists: rolled forward from last year's signed documents."""
     ok, why = docs_ready(folder)
     if not ok:
         raise ValueError(why)
+    try:
+        _meetings_to_setup(folder)
+    except Exception:  # noqa: BLE001
+        pass
     import importlib
     mds = importlib.import_module("make_docs_std")
     mds.FLAGS.clear()
