@@ -191,7 +191,8 @@ def date_rule(text, how):
     t = (text or "").lower()
     if "appoint" in t or "incorporat" in t:
         return None  # may rightly be an older date
-    return "in" if "during the year" in t else "after"
+    # last year's AGM is held inside this financial year, so its date rightly falls before the year end
+    return "in" if "during the year" in t or "during this financial year" in t or "last year's agm" in t else "after"
 
 
 def stale_dates(folder, text, how, answer):
