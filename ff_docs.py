@@ -107,7 +107,12 @@ def upload(folder, kind, filename, data, user=""):
     filename = _safe(filename)
     ext = Path(filename).suffix.lower()
     label = next((r["title"] for r in checklist(folder) if r["kind"] == kind), kind)
-    if kind == "signed":
+    if kind.startswith("signed_"):
+        if ext != ".pdf":
+            raise ValueError("expected the signed PDF")
+        dest = ff_signed.store_slot(folder, kind[7:], data)
+        label = "Signed " + dest.stem
+    elif kind == "signed":
         if ext != ".pdf":
             raise ValueError("expected the signed PDF")
         if re.search(r"aoc[-_ ]?4|mgt[-_ ]?7", filename, re.I):

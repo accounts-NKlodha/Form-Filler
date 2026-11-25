@@ -40,11 +40,45 @@ def is_mca_form(path):
     return _seen[key]
 
 
+# One upload row per signed document; a file uploaded on a row is saved under that row's fixed name, so the order
+# in the joined PDF never depends on what the scan was called.
+SLOTS = [("fs", "Financial statements"), ("auditor", "Auditor's report"), ("board", "Board's report"), ("notice", "AGM notice"),
+         ("directors", "List of directors"), ("shareholders", "List of shareholders")]
+_GUESS = [(4, r"director.*list|list.*director"), (5, r"share.*list|list.*share|member"),
+          (0, r"financial|balance|schedule|accounts|\bfs\b"), (1, r"audit|caro"), (2, r"board|director"), (3, r"notice|agm")]
+
+
+def slot_name(i):
+    return f"{i + 1} {SLOTS[i][1]}.pdf"
+
+
 def _rank(p):
-    for i, (pat, _) in enumerate(ORDER):
+    for i in range(len(SLOTS)):
+        if p.name.lower() == slot_name(i).lower():
+            return i
+    for i, pat in _GUESS:  # a file saved straight into the folder: placed by what its name says
         if re.search(pat, p.name, re.I):
             return i
-    return len(ORDER)
+    return len(SLOTS)
+
+
+def store_slot(folder, key, data):
+    """Save one signed PDF on its row. Files already on that row are moved aside, never deleted."""
+    import app
+    i = next((n for n, (k, _) in enumerate(SLOTS) if k == key), None)
+    if i is None:
+        raise ValueError("unknown document")
+    folder = Path(folder)
+    d = signed_dir(folder)
+    for p in sorted(d.glob("*.pdf")):
+        if p.is_file() and _rank(p) == i:
+            app._move_aside(folder, p)
+    dest = d / slot_name(i)
+    dest.write_bytes(data)
+    if is_mca_form(dest):
+        app._move_aside(folder, dest)
+        raise ValueError("this PDF is an MCA form (for example last year's AOC-4), not a signed document: it was not kept")
+    return dest
 
 
 def signed_files(folder):
@@ -95,7 +129,7 @@ def state(folder):
     rep = folder / "reports"
     drafts = sorted(p.name for p in rep.glob("*") if p.suffix.lower() in (".docx", ".xlsx", ".pdf")) if rep.exists() else []
     files = signed_files(folder)
-    have = {ORDER[_rank(p)][1] for p in files if _rank(p) < len(ORDER)}
+    have = {SLOTS[_rank(p)][1] for p in files if _rank(p) < len(SLOTS)}
     return {"drafts": drafts, "signed": [p.name for p in files], "rejected": [p.name for p in rejected(folder)],
             "named": sorted(have), "dir": str(signed_dir(folder))}
 
@@ -135,8 +169,26 @@ def box(folder, ui):
         if not r:
             continue
         if k == "signed":
-            status = ui.tag("Ready to attach on MCA", "good") if path else ui.tag("Last page will stay pending", "need")
-            why = "Financial statements, Auditor's report, Board's report and AGM notice, signed. One PDF is attached as it is; several are joined in that order. " + note
+            sf = signed_files(folder)
+            out.append(f"<div style=\"padding:12px 8px;border-top:1px solid var(--border)\"><b>This year's signed set for MCA</b> "
+                       f"{ui.tag('Ready to attach on MCA', 'good') if path else ui.tag('Last page will stay pending', 'need')}"
+                       f"<div class=mut>Choose each signed PDF on its own row. They are joined top to bottom into one file for MCA, whatever the scans are called. "
+                       f"{ui.esc(note)}</div></div>")
+            for i, (key, title) in enumerate(SLOTS):
+                mine = [p for p in sf if _rank(p) == i]
+                fl = "".join(f"<div class=fl><span>{ui.esc(p.name)}</span><span class=mut>{ff_docs.stamp(p)}</span></div>" for p in mine)
+                must = i == 0
+                tg = ui.tag("Ready", "good") if mine else ui.tag("Needed", "need") if must else ui.tag("Not added")
+                out.append(f"<div class=doc data-c=\"{ui.esc(folder.name)}\" data-k=\"signed_{key}\" style=\"padding-left:28px\"><div><b>{i + 1}. {ui.esc(title)}</b> "
+                           f"<span class=mut>signed PDF</span>{fl}<div class=\"mut note\" role=status></div></div>"
+                           f"<div class=side>{tg}<label class=\"btn sm pick\">{'Replace' if mine else 'Choose file'}"
+                           f"<input type=file accept=\".pdf\" aria-label=\"{ui.esc(title)}\"></label></div></div>")
+            other = [p for p in sf if _rank(p) >= len(SLOTS)]
+            fl = "".join(f"<div class=fl><span>{ui.esc(p.name)}</span><span class=mut>{ff_docs.stamp(p)}</span></div>" for p in other)
+            out.append(f"<div class=doc data-c=\"{ui.esc(folder.name)}\" data-k=\"signed\" style=\"padding-left:28px\"><div><b>7. Any other signed PDF</b> "
+                       f"<span class=mut>joined after the rows above</span>{fl}<div class=\"mut note\" role=status></div></div>"
+                       f"<div class=side><label class=\"btn sm pick\">Add files<input type=file accept=\".pdf\" multiple aria-label=\"Other signed PDF\"></label></div></div>")
+            continue
         else:
             status = ui.tag("Ready", "good") if r["files"] else ui.tag("Not there yet", "need")
             why = r["why"]
