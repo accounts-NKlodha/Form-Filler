@@ -305,7 +305,7 @@ Tally needs F1 Help &gt; Settings &gt; Connectivity: Client/Server set to Both, 
             + add
             + """<script>fetch('/ff/api/tally').then(r=>r.json()).then(d=>{const t=document.getElementById('tally');
 t.textContent=d.error?('Tally not reachable: '+d.error):('Tally connected. Open: '+((d.companies||[]).map(c=>c.name).join(', ')||'no company'));
-const dl=document.getElementById('tallyco');for(const c of d.companies||[]){const o=document.createElement('option');o.value=c.name;dl.appendChild(o)}}).catch(()=>{});
+const dl=document.getElementById('tallyco');for(const c of d.companies||[]){const o=document.createElement('option');o.value=c.name;dl.appendChild(o)}const ns=(d.companies||[]).map(c=>c.name);if(ns.length)for(const i of document.querySelectorAll('input[list=tallyco]')){const s=document.createElement('select');s.name=i.name;const vs=ns.slice();if(i.value&&!vs.includes(i.value))vs.unshift(i.value);if(!i.value)vs.unshift('');for(const v of vs){const o=document.createElement('option');o.value=v;o.textContent=v?(ns.includes(v)?v:v+' (not open in Tally)'):'Pick a company open in Tally';if(v===i.value)o.selected=true;s.appendChild(o)}i.replaceWith(s)}}).catch(()=>{});
 for(const f of document.querySelectorAll('form[data-tb]'))f.addEventListener('submit',async e=>{e.preventDefault();const fi=f.querySelector('input[type=file]').files[0];
 if(!fi)return;const r=await fetch(f.action+'&which='+f.which.value+'&name='+encodeURIComponent(fi.name),{method:'POST',body:fi});const d=await r.json();
 location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error):('Read '+d.ledgers+' ledgers from '+fi.name+'. Click Get data for selected to build.'))});</script>""")
