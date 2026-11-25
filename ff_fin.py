@@ -820,7 +820,16 @@ def make_docs(folder, user="agent"):
     mds.FLAGS.clear()
     out = Path(folder) / "reports"
     flags = mds.main(str(cfg_path(folder)), str(output(folder)), str(ly_docs_dir(folder)), str(out))
-    ff_audit.event(folder, "docs", f"Reports and meeting papers drafted in {out.name} ({len(flags)} points to check)", by=user)
+    try:  # one place to print from: the drafts also go beside the workbook in 'for signing'
+        sd = Path(folder) / "for signing"
+        sd.mkdir(parents=True, exist_ok=True)
+        fs = output(folder)
+        for p in ([Path(fs)] if fs else []) + sorted(out.glob("*")):
+            if p.suffix.lower() in (".docx", ".xlsx") and not p.name.startswith("~"):
+                shutil.copy2(p, sd / p.name)
+    except Exception:  # noqa: BLE001
+        pass
+    ff_audit.event(folder, "docs", f"Reports and meeting papers drafted in {out.name} and copied to 'for signing' ({len(flags)} points to check)", by=user)
     return out, flags
 
 
