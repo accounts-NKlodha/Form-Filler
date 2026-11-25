@@ -796,6 +796,10 @@ def docs_ready(folder):
         import docx  # noqa: F401
     except ImportError:
         return False, "python-docx is not installed: run setup.bat"
+    try:
+        _dates_to_docs(folder)
+    except Exception:  # noqa: BLE001
+        pass
     cfg = load_cfg(folder)
     if not cfg.get("docs"):
         return False, "The AGM date, the date of the documents and the company's short name are not entered yet"
@@ -835,6 +839,25 @@ def _meetings_to_setup(folder):
     save_cfg(folder, cfg)
 
 
+def _dates_to_docs(folder):
+    """The date the board signed the financial statements (Inputs for the forms) is the date on every drafted report and list;
+    the AGM date comes from the same place. So the reports can be drafted without typing the dates twice."""
+    cfg = load_cfg(folder)
+    ans = {k: str(a or "").strip() for k, _, _, a, _ in app.questions(folder)[0]}
+    ok = lambda v: bool(re.fullmatch(r"\d{2}/\d{2}/\d{4}", v or ""))
+    sign, agm = ans.get("fs_sign_date", ""), ans.get("agm_date", "")
+    d = dict(cfg.get("docs") or {})
+    new = dict(d)
+    if ok(sign):
+        new["doc_date"] = new["list_date"] = sign
+    if ok(agm):
+        new["agm_date"] = agm
+    if new != d and new.get("doc_date") and new.get("agm_date"):
+        new.setdefault("dec", 0)
+        cfg["docs"] = new
+        save_cfg(folder, cfg)
+
+
 def make_docs(folder, user="agent"):
     """Notice, board's report, auditor's report + CARO, lists: rolled forward from last year's signed documents."""
     ok, why = docs_ready(folder)
@@ -842,6 +865,7 @@ def make_docs(folder, user="agent"):
         raise ValueError(why)
     try:
         _meetings_to_setup(folder)
+        _dates_to_docs(folder)
     except Exception:  # noqa: BLE001
         pass
     import importlib

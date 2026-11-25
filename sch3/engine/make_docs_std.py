@@ -59,6 +59,35 @@ def _find_ly(ly, n):
     return p
 
 
+_FOOT = re.compile(r"^(\s*dated?\s*[:\-\u2013]?\s*)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})", re.I)
+
+
+def _foot_dates(out, doc_date, list_date):
+    """Every 'Date: ...' line at the foot of the drafted documents and lists carries the board's signing date,
+    whatever date last year's file had there. Returns the number of lines changed."""
+    n = 0
+    for f in sorted(os.listdir(out)):
+        path = os.path.join(out, f)
+        if f.startswith("~"): continue
+        if f.lower().endswith(".docx"):
+            d = docx.Document(path); hit = 0
+            for p in paras(d):
+                m = _FOOT.match(p.text)
+                if m and m.group(2) != doc_date: hit += replace(p, m.group(2), doc_date)
+            if hit: d.save(path); n += hit
+        elif f.lower().endswith(".xlsx"):
+            x = openpyxl.load_workbook(path); hit = 0
+            for ws in x.worksheets:
+                for row in ws.iter_rows():
+                    for c in row:
+                        if isinstance(c.value, str):
+                            m = _FOOT.match(c.value)
+                            if m and m.group(2) != list_date:
+                                c.value = c.value[:m.start(2)] + list_date + c.value[m.end(2):]; hit += 1
+            if hit: x.save(path); n += hit
+    return n
+
+
 class _Setup(dict):
     """Setup values; a blank or missing text row reads as '' so one empty box does not stop the whole document set."""
     def __getitem__(self, k):
@@ -262,6 +291,8 @@ def main(cfg_path, xlsx, ly, out):
                         for o, n in pairs: v = v.replace(o, n)
                         if v != c.value: c.value = v
         x.save(fn(f"{kind} 31-03-{FYE}.xlsx"))
+    n_foot = _foot_dates(out, DOC, LD)
+    if n_foot: FLAGS.append(f"{n_foot} date line(s) at the foot of the documents and lists were set to the signing date {DOC}.")
     FLAGS.append(f"Dates: documents {DOC}, AGM {AGM.strftime('%A')} {long_date(AGM)}, lists {LD}. UDIN: {UDIN}.")
     json.dump(FLAGS, open(os.path.join(out, "flags.json"), "w"), indent=1)
     return FLAGS
