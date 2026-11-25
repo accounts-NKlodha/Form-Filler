@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app
+import ff_signed
 
 QUEUE = app.ROOT / "queue.json"
 DONE = ("submitted", "skipped", "saved")
@@ -24,7 +25,8 @@ STATUS_TEXT = {"queued": "Waiting", "filling": "Filling now", "submitted": "Subm
 ATTACH = {
     "aoc4": [("aoc4_financialState", "Signed financial statements with auditor's and board's reports (attachment a)", True, "Financial statements"),
              ("aoc4_optional", "Optional attachment", False, "Optional attachment")],
-    "mgt7a": [("mgt7a_Photograph", "Photograph of the registered office showing the building and name board", True, "Registered office photo")],
+    "mgt7a": [("mgt7a_Photograph", "Photograph of the registered office showing the building and name board", True, "Registered office photo"),
+              ("mgt7a_shareholders", "List of shareholders (MCA Excel, prepared by the app when shareholders did not change)", False, "Shareholder list")],
 }
 ATTACH_DIR = "mca_attachments"
 
@@ -38,6 +40,7 @@ def load():
     q.setdefault("running", False)
     q.setdefault("current", None)
     q.setdefault("submit", True)
+    q.setdefault("auto_submit", False)  # the partner's switch: the tool clicks Submit itself on a clean, verified form
     q.setdefault("next_id", 1)
     return q
 
@@ -62,19 +65,81 @@ def form_url(slug):
 
 # ---------------------------------------------------------------- attachments
 
+# Excel files uploaded through an "Upload Excel" button (no file box on the form): kind -> (button key ending,
+# file name pattern in the client's attachments folder, heading the button must sit under, title)
+XL = {"mgt7a": [("xl_members", "panel1641551788472-panel_copy_copy_copy-guidebutton_copy_cop_1466332206", r"meeting of members",
+                 r"A\s+MEMBERS", "Meetings of members (Excel)"),
+                ("xl_board", "panel1641552137996-panel_copy_copy_copy-guidebutton_copy_cop_1466332206", r"board\s*meeting",
+                 r"B\s+BOARD MEETINGS", "Board meetings (Excel)")]}
+
+
+def excel_files(folder, slug):
+    """{kind: Path} of this year's MCA Excel attachments the app prepared (clients/<c>/attachments)."""
+    import re
+    d, out = Path(folder) / "attachments", {}
+    for kind, _, pat, _, _ in XL.get(slug, []):
+        mine = Path(folder) / ATTACH_DIR / kind  # a file staff uploaded wins over the one the app prepared
+        up = sorted(p for p in mine.glob("*.xls*") if not p.name.startswith("~$")) if mine.exists() else []
+        if up:
+            out[kind] = up[-1]
+            continue
+        hits = sorted(p for p in d.glob("*.xls*") if re.search(pat, p.name, re.I) and not p.name.startswith("~$")) if d.exists() else []
+        if hits:
+            out[kind] = hits[-1]
+    return out
+
+
 def attachment_files(folder, slug):
     """{element: Path} of the files staff uploaded for this form."""
     out = {}
     for el, _, _, _ in ATTACH.get(slug, []):
         d = Path(folder) / ATTACH_DIR / el
+        if el == ff_signed.SLOT:  # signed set from the client's signed folder; an MCA form PDF is never attached
+            try:
+                path, _ = ff_signed.attachment(folder, d)
+            except Exception:  # noqa: BLE001  a damaged PDF must not take the screens down
+                path = None
+            if path:
+                out[el] = path
+            continue
         files = sorted(p for p in d.glob("*") if p.is_file()) if d.exists() else []
+        if not files and el == "mgt7a_shareholders":  # the copy the app carried forward from last year's filed form
+            a = Path(folder) / "attachments"
+            files = sorted(p for p in a.glob("*hareholder*.xls*") if not p.name.startswith("~$")) if a.exists() else []
         if files:
             out[el] = files[-1]
     return out
 
 
+def pending(folder, slug):
+    """Mandatory attachments not there yet: the form is filled and saved up to the last page, which waits for them."""
+    have = attachment_files(folder, slug)
+    out = []
+    for el, title, must, _ in ATTACH.get(slug, []):
+        if must and el not in have and el == ff_signed.SLOT:  # the photo for MGT-7A sits on its first page: that one still blocks
+            why = ""
+            if el == ff_signed.SLOT:
+                try:
+                    why = ff_signed.attachment(folder, Path(folder) / ATTACH_DIR / el)[1]
+                except Exception as e:  # noqa: BLE001
+                    why = f"signed PDF could not be read: {str(e)[:80]}"
+            out.append((el, title, why))
+    return out
+
+
 def store_attachment(folder, el, filename, data):
     slot = next(((s, a) for s, rows in ATTACH.items() for a in rows if a[0] == el), None)
+    xl = next((x for rows in XL.values() for x in rows if x[0] == el), None)
+    if xl or el == "mgt7a_shareholders":  # MCA Excel formats: kept under the name staff gave, older copy moved aside
+        if Path(filename).suffix.lower() not in (".xlsm", ".xlsx"):
+            raise ValueError("attach the MCA Excel file (.xlsm)")
+        d = Path(folder) / ATTACH_DIR / el
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob("*"):
+            app._move_aside(folder, old)
+        dest = d / filename
+        dest.write_bytes(data)
+        return dest
     if not slot:
         raise ValueError("unknown attachment")
     d = Path(folder) / ATTACH_DIR / el
@@ -86,6 +151,9 @@ def store_attachment(folder, el, filename, data):
         raise ValueError("attach a PDF, JPG or PNG")
     dest = d / f"{slot[1][3]}{ext}"
     dest.write_bytes(data)
+    if el == ff_signed.SLOT and ext == ".pdf" and ff_signed.is_mca_form(dest):
+        app._move_aside(folder, dest)
+        raise ValueError("this PDF is an MCA form (for example last year's AOC-4), not the signed financial statements: it was not kept")
     return dest
 
 
@@ -114,7 +182,7 @@ def problems(client, slug):
             out.append(str(e))
     have = attachment_files(folder, slug)
     for el, title, must, _ in ATTACH.get(slug, []):
-        if must and el not in have:
+        if must and el not in have and el != ff_signed.SLOT:
             out.append(f"attachment missing: {title}")
     return out
 
@@ -173,6 +241,12 @@ def start():
     return dict(j, url=form_url(j["slug"]))
 
 
+def set_auto(on):
+    q = load()
+    q["auto_submit"] = bool(on)
+    save(q)
+
+
 def pause():
     q = load()
     q["running"] = False
@@ -190,7 +264,8 @@ def advance(body):
         j["note"] = str(body.get("note") or "")[:300]
         j["counts"] = body.get("counts") or {}
         j["updated"] = datetime.now().isoformat(timespec="seconds")
-        _audit(j, {"submitted": f"Submitted on MCA, SRN {j['srn'] or 'not read'}", "saved": "Draft saved on MCA, not submitted",
+        tool = "automatic Submit" in j["note"]
+        _audit(j, {"submitted": f"Submitted on MCA{' (Submit clicked by Form Filler, automatic Submit switched on by staff)' if tool else ''}, SRN {j['srn'] or 'not read'}", "saved": "Draft saved on MCA, not submitted",
                    "held": f"Filing stopped: {j['note'] or 'needs attention'}", "skipped": "Skipped"}.get(j["status"], j["status"]))
     q["current"] = None
     nxt = next((x for x in q["jobs"] if x["status"] == "queued"), None) if q["running"] else None
@@ -238,6 +313,25 @@ def clear_done():
     save(q)
 
 
+def switch(slug):
+    """Staff opened another queued form in the MCA tab: fill that one now. The form that was being filled goes back
+    to waiting (its draft stays saved on the portal) and is taken up again in its turn."""
+    q, j = current()
+    cand = [x for x in q["jobs"] if x["slug"] == slug and x["status"] in ("queued", "held")]
+    if not cand:
+        raise ValueError(f"no {app.FORM_LABEL.get(slug, slug)} is waiting in the queue")
+    nxt = next((x for x in cand if j and x["client"] == j["client"]), cand[0])  # the same client's form first
+    if j and j["status"] == "filling":
+        j["status"] = "queued"
+        j["note"] = "Set aside part way: draft saved on MCA"
+        j["updated"] = datetime.now().isoformat(timespec="seconds")
+        _audit(j, f"Set aside part way; {app.FORM_LABEL.get(slug, slug)} taken up first", by="staff")
+    _activate(q, nxt)
+    q["running"] = True
+    save(q)
+    return {"job": dict(nxt, url=form_url(slug))}
+
+
 # ---------------------------------------------------------------- the plan the extension gets
 
 def plan(slug):
@@ -246,10 +340,15 @@ def plan(slug):
     if not q["running"] or not j:
         return None
     if j["slug"] != slug:
-        raise ValueError(f"the filing queue is on {j['client']}'s {app.FORM_LABEL.get(j['slug'], j['slug'])}, "
-                         f"but this tab is {app.FORM_LABEL.get(slug, slug)}. Open that form, or pause the queue in the app")
+        e = ValueError(f"the filing queue is on {j['client']}'s {app.FORM_LABEL.get(j['slug'], j['slug'])}, "
+                       f"but this tab is {app.FORM_LABEL.get(slug, slug)}. Open that form, or pause the queue in the app")
+        e.can_switch = any(x["slug"] == slug and x["status"] in ("queued", "held") for x in q["jobs"])
+        e.other = app.FORM_LABEL.get(j["slug"], j["slug"])
+        e.same_client = any(x["slug"] == slug and x["status"] in ("queued", "held") and x["client"] == j["client"] for x in q["jobs"])
+        raise e
     m = app._mca()
     folder = app.folder_of(j["client"])
+    app.refresh_questions(folder)
     cin = app.load(folder).get("cin", "")
     p = m.make_plan(app.inputs_path(folder), slug)
     p["client"] = f"{j['client']} ({cin})"
@@ -258,12 +357,12 @@ def plan(slug):
     first = []
     for f in m.schema(slug)["fields"]:
         if f.get("name") in ("CIN_Number_Other_User", "CIN_Number_Professional_User") and f["key"] not in have and cin:
-            e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+            e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
             e.update(value=cin, display=cin)
             first.append(e)
     p["fields"] = first + p["fields"]
     p.update(autoSave=True, autoNext=True, autoAdvance=True, autoContinue=True, watchSubmit=True,
-             advancePath="/queue/advance", queueJob=j["id"], nextUrl=form_url(slug))
+             advancePath="/queue/advance", queueJob=j["id"], nextUrl=form_url(slug), autoSubmit=bool(q.get("auto_submit")))
     files = attachment_files(folder, slug)
     by_name = {f.get("name"): f for f in m.schema(slug)["fields"] if f["type"] == "file"}
     p["attachments"] = []
@@ -272,6 +371,17 @@ def plan(slug):
         if f and path:
             p["attachments"].append({"code": f["code"], "key": f["key"], "domBase": f["domBase"], "som": f["som"], "label": f["label"],
                                      "kind": el, "file": path.name, "url": f"/queue/file?job={j['id']}&el={el}"})
+    xl = excel_files(folder, slug)
+    buttons = {b["key"]: b for b in m.load_dump(slug).get("buttons") or []}
+    for kind, tail, _, heading, title in XL.get(slug, []):
+        key = next((k for k in buttons if k.endswith(tail)), None)
+        if key and xl.get(kind):
+            p["attachments"].append({"code": kind, "key": key, "button": "guideContainer-" + key + "__", "heading": heading, "label": title,
+                                     "kind": kind, "file": xl[kind].name, "url": f"/queue/file?job={j['id']}&el={kind}"})
+    # Mandatory attachments not there yet: the tool fills and saves every page before them, then holds this form
+    # as "last page pending" and goes on to the next client.
+    p["pendingAttachments"] = [{"domBase": by_name[el]["domBase"], "label": by_name[el]["label"], "title": title.split("(")[0].strip()}
+                               for el, title, _ in pending(folder, slug) if by_name.get(el)]
     return p
 
 
@@ -280,7 +390,7 @@ def file_json(job_id, el):
     j = _job(q, int(job_id or 0))
     if not j:
         raise FileNotFoundError("no such job")
-    p = attachment_files(app.folder_of(j["client"]), j["slug"]).get(el)
+    p = attachment_files(app.folder_of(j["client"]), j["slug"]).get(el) or excel_files(app.folder_of(j["client"]), j["slug"]).get(el)
     if not p:
         raise FileNotFoundError(f"no file for {el}")
     return {"name": p.name, "b64": base64.b64encode(p.read_bytes()).decode("ascii")}

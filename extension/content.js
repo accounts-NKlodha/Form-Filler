@@ -62,7 +62,16 @@
     document.body.appendChild(box);
     return box;
   }
+  // The side panel asks this tab how it is every 3 s while it is open. It shows the same text as the page box,
+  // so with the panel open plain progress is not drawn over the form: the box comes up only when it has buttons.
+  let panelSeen = 0;
+  let shown = [];  // the buttons of the message now showing: [label, handler]
+  const panelOpen = () => Date.now() - panelSeen < 8000;
   function status(html, buttons = []) {
+    // Side panel open: nothing is drawn over the form. Text and buttons both go to the panel.
+    shown = buttons;
+    // (A button that opens a file chooser needs a click on the page itself, so that one message keeps the box.)
+    if (panelOpen() && !buttons.some(x => /…/.test(x[0]))) { close(); mirror(html, buttons.map(x => x[0])); return; }
     const b = panel();
     b.innerHTML = `<div style="font-weight:600;margin-bottom:4px">MCA filler <span style="font-weight:400;opacity:.7">v${chrome.runtime.getManifest().version}</span></div><div>${html}</div>`;
     if (buttons.length) {
@@ -123,8 +132,30 @@
     status('Getting fill plan from the MCA filler server…');
     const r = await server('/plan?slug=' + encodeURIComponent(slug()));
     if (!r.ok) {
-      let msg = r.error || r.text || ('HTTP ' + r.status);
-      try { msg = JSON.parse(r.text).error || msg; } catch (e) { /* plain text */ }
+      let msg = r.error || r.text || ('HTTP ' + r.status), info = {};
+      try { info = JSON.parse(r.text) || {}; msg = info.error || msg; } catch (e) { /* plain text */ }
+      if (info.canSwitch && info.sameClient) {
+        // The same client's other form is open in this tab: take it up straight away, no question.
+        // The form that was being filled goes back to waiting; its draft stays saved on the portal.
+        status(`This tab is <b>${esc((info.slug || '').toUpperCase())}</b>: filling it now. The ${esc(info.other)} draft stays saved and is taken up afterwards.`);
+        const s = await server('/queue/switch', { slug: info.slug });
+        if (!s.ok) { status('Could not switch: ' + esc(s.error || s.text), [['Close', close]]); return; }
+        const again = await server('/plan?slug=' + encodeURIComponent(slug()));
+        if (again.ok) return doFill();
+        status('Could not get the plan after switching: ' + esc(again.error || again.text || ''), [['Close', close]]);
+        return;
+      }
+      if (info.canSwitch) {
+        // Not an error: staff opened another queued form. Offer to fill this one now; the other waits its turn.
+        status(`The queue is filling <b>${esc(info.other)}</b>, and this tab is <b>${esc((info.slug || '').toUpperCase())}</b>.<br>` +
+          `Fill this form now? The ${esc(info.other)} draft stays saved on the portal and is taken up again afterwards.`,
+          [['Fill this form now', async () => {
+            const s = await server('/queue/switch', { slug: info.slug });
+            if (!s.ok) { status('Could not switch: ' + esc(s.error || s.text), [['Close', close]]); return; }
+            doFill();
+          }, true], ['Close', close]]);
+        return;
+      }
       status(`Could not get a plan: ${esc(msg)}<br><small>Start the server (start_server.bat) or load a plan file.</small>`,
         [['Load plan file…', pickFile, true], ['Close', close]]);
       return;
@@ -150,10 +181,37 @@
       return;
     }
     const cells = (plan.tables || []).reduce((n, t) => n + t.rows.reduce((m, r) => m + r.length, 0), 0);
-    status(`Client: <b>${esc(plan.client)}</b><br>Form: <b>${esc((plan.slug || '').toUpperCase())}</b><br>` +
+    const clicked = !autorun && window.__mcaClicked;
+    if (clicked && panelOpen()) {
+      // Clicked in the side panel, which shows the client and has Stop: start straight away, nothing on the page.
+      window.__mcaClicked = false;
+      stopLoop = false;
+      status(`Filling <b>${esc(plan.client)}</b> · ${esc((plan.slug || '').toUpperCase())}`);
+      runFill(plan);
+      return;
+    }
+    if (!clicked && !(autorun && plan.autoAdvance)) status(`Client: <b>${esc(plan.client)}</b><br>Form: <b>${esc((plan.slug || '').toUpperCase())}</b><br>` +
       `${plan.fields.length} fields, ${cells} table cells${(plan.errors || []).length ? `, <span style="color:#ffb4a2">${plan.errors.length} Excel errors</span>` : ''}<br>` +
       `<small>Workbook: ${esc(plan.workbook || '')}</small><br>Fill now? It fills this page and then shows you which Save to click. It never clicks Submit.`,
       [['Fill', () => runFill(plan), true], ['Cancel', close]]);
+    if (clicked) {
+      // Staff clicked Form Filler themselves: no second question. Three seconds to see the client's name and stop.
+      window.__mcaClicked = false;
+      stopLoop = false;
+      let n = 3, done = false;
+      const go = () => { if (!done) { done = true; runFill(plan); } };
+      const tick = () => {
+        if (done) return;
+        if (stopLoop) { done = true; status('Stopped. Click Form Filler to carry on.', [['Close', close]]); return; }
+        if (n <= 0) { go(); return; }
+        status(`Filling <b>${esc(plan.client)}</b> · ${esc((plan.slug || '').toUpperCase())} in ${n} s.<br><small>${plan.fields.length} fields. It never clicks Submit.</small>`,
+          [['Start now', go, true], ['Stop', () => { stopLoop = true; tick(); }]]);
+        n--;
+        setTimeout(tick, 1000);
+      };
+      tick();
+      return;
+    }
     if (autorun && plan.autoAdvance && plan.autoContinue) {
       autorun = false;
       stopLoop = false;
@@ -178,9 +236,10 @@
     }
   }
 
-  let stopLoop = false, autorun = false;
-  async function runFill(plan, force = false, round = 0, idle = 0) {
-    if (round === 0) stopLoop = false;
+  let stopLoop = false, autorun = false, stoppedBy = '';
+  async function runFill(plan, force = false, round = 0, idle = 0, left = -1) {
+    if (round === 0) { stopLoop = false; stoppedBy = ''; }
+    const roundStart = new Date().toISOString();   // for the time-taken figure on the partner review screen
     // Plans that bring their attachments (ADT-1): upload the ones on this page that are still empty.
     const attachLog = [];
     if ((plan.attachments || []).length) {
@@ -204,6 +263,18 @@
       }
       force = true;  // uploads handled here, so skip the "attach first" prompt
     }
+    // Signed files not in the client's signed folder yet: everything before this page is filled and saved.
+    // Hold the form as "last page pending" and go on to the next client; nothing is typed on this page.
+    if ((plan.pendingAttachments || []).length && plan.watchSubmit && !stopLoop) {
+      const ps = await page('attachState', { list: plan.pendingAttachments });
+      const wait = plan.pendingAttachments.filter((a, i) => Array.isArray(ps) && ps[i] === 'empty');
+      if (wait.length) {
+        const note = 'Last page pending: ' + wait.map(a => a.title).join('; ') + ' not in the signed folder';
+        status(`<b>${esc(plan.client)}</b>: every page before this one is filled and saved.<br>${esc(note)}.<br><small>Save the signed PDF in the client's signed folder, then Fill again from the app.</small>`);
+        await queueNext(plan, 'held', '', {}, note);
+        return;
+      }
+    }
     if (!force) {
       const missing = await page('uploadsMissing');
       if (Array.isArray(missing) && missing.length) {
@@ -226,28 +297,54 @@
     // Field names and statuses only: client values never go into the log.
     const log = {
       client: plan.client, slug: plan.slug, workbook: plan.workbook, url: location.origin + location.pathname,
-      finishedAt: new Date().toISOString(), counts: count, save: res.save,
+      startedAt: roundStart, round, finishedAt: new Date().toISOString(), counts: count, timing: res.timing || null, save: stoppedBy ? { ...res.save, stoppedBy } : res.save,
       entries: res.log.map(({ value, ...rest }) => rest),
     };
     const sent = await server('/log', log);
     // Plans with autoSave (ADT-1): keep going section by section and page by page until a round makes no progress.
-    const idleNow = count.filled ? 0 : idle + 1;
+    // Progress = something typed, or fewer fields still waiting below a Save (a section that already held its values).
+    // Fields still to come: below an unclicked Save, or still locked by the portal until the Save above is in.
+    const leftNow = (count['next-section'] || 0) + ((res.save && res.save.locked) || 0);
+    // A new page brings its own count of waiting fields: any change in that count is progress, not an idle round.
+    const idleNow = (count.filled || (left >= 0 && leftNow !== left) || (res.save && res.save.next)) ? 0 : idle + 1;
     // Carry on only to the next page (Next clicked) or the next section of this page; no Next = stop here.
-    if (plan.autoSave && res.save.clicked && (res.save.next || res.save.more) && !count.failed && round < 20 && idleNow < 2 && !stopLoop) {
+    if (plan.autoSave && res.save.clicked && !res.save.stuck && (res.save.next || res.save.more) && !count.failed && round < 40 && idleNow < 2 && !stopLoop) {
       status(`Round ${round + 1}: filled <b>${count.filled || 0}</b>. ${esc(res.save.msg)}. Continuing… <small>(Alt+Shift+X stops)</small>`);
-      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow); else status('Stopped.', [['Close', close]]); }, 2500);
+      setTimeout(() => { if (!stopLoop) runFill(plan, true, round + 1, idleNow, leftNow); else status('Stopped.', [['Close', close]]); }, 4000 + Math.random() * 2000);  // unhurried: the portal blocks rapid saves
       return;
     }
     // Filing queue: last page saved. Staff click Submit; we wait for the SRN, then open the next client's form.
     if (plan.watchSubmit && res.save.lastPage && !count.failed && !stopLoop) {
-      status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br><b style="color:#ffd166">Check the form, then click the outlined Submit yourself.</b>` +
-        `<br>The tool waits for the SRN, then opens the next client. <small>(Alt+Shift+X stops)</small>`);
+      // Automatic Submit: only when switched on for this run, and only on a form that filled with no gap at all.
+      const gaps = (count.manual || 0) + (count.hidden || 0) + (res.save.cleared || 0);
+      let auto = !!plan.autoSubmit && !gaps;
+      if (auto) {
+        for (let n = 10; n > 0 && !stopLoop; n--) {
+          status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br>Automatic Submit is on: clicking Submit in ${n} s. <small>(Stop or Alt+Shift+X cancels)</small>`,
+            [['Stop', () => { stopLoop = true; }]]);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        if (stopLoop) auto = false;
+      }
+      status(`<b>${esc(plan.client)}</b>: every page is filled and saved.<br>` + (auto ? 'Submit clicked. Waiting for the SRN…'
+        : `<b style="color:#ffd166">Check the form, then click the outlined Submit yourself.</b>` +
+          (plan.autoSubmit && gaps ? `<br>Automatic Submit held back: ${gaps} field${gaps > 1 ? 's were' : ' was'} left for staff.` : '') +
+          `<br>The tool waits for the SRN, then opens the next client.`) + ` <small>(Alt+Shift+X stops)</small>`);
       busy = true;
-      const w = await page('awaitSubmit', {});
+      const w = await page('awaitSubmit', { click: auto });
       busy = false;
-      if (w && w.srn) { await queueNext(plan, 'submitted', w.srn, count, ''); return; }
+      if (w && w.srn) { await queueNext(plan, 'submitted', w.srn, count, auto ? 'Submit clicked by Form Filler (automatic Submit on)' : ''); return; }
       status(`No SRN seen for <b>${esc(plan.client)}</b> (${esc(w && w.msg)}).<br>If you submitted, note the SRN in the app's queue.`,
         [['Next client', () => queueNext(plan, 'saved', '', count, 'SRN not read'), true], ['Wait again', () => runFill(plan, true)], ['Close', close]]);
+      return;
+    }
+    if (res.save.stuck && !stopLoop) {
+      const need = (res.save.need || []).map(n => `<li>${esc(n)}</li>`).join('');
+      status(`<b>${esc(plan.client)}</b>: this page needs you before the tool can go on.<br>${esc(res.save.msg || '')}.` +
+        (need ? `<br>Empty mandatory fields on this page:<ul style="margin:6px 0 0 16px;padding:0;max-height:160px;overflow:auto">${need}</ul>` : '') +
+        `<small>Type them on the portal, click that section's Save, then Fill again. Nothing was submitted.</small>`,
+        [['Fill again', () => runFill(plan, true), true]].concat(plan.watchSubmit
+          ? [['Skip to next client', () => queueNext(plan, 'held', '', count, (res.save.need || [])[0] || res.save.msg || 'page locked')]] : [], [['Close', close]]));
       return;
     }
     if (plan.watchSubmit && !stopLoop && (count.failed || !res.save.clicked)) {
@@ -285,7 +382,7 @@
     const summary = order.filter(k => count[k]).map(k => `${k}: <b>${count[k]}</b>`).join('<br>');
     const problems = res.log.filter(e => ['failed', 'manual', 'hidden'].includes(e.status)).slice(0, 12)
       .map(e => `<li>${esc(e.code || '')} ${esc(e.label)}: ${esc(e.status)}${e.msg ? ' (' + esc(e.msg) + ')' : ''}</li>`).join('');
-    status(`${summary}<br><b style="color:#ffd166">${esc(res.save.msg)}</b><br>${problems ? '<ul style="margin:6px 0 0 16px;padding:0;max-height:200px;overflow:auto">' + problems + '</ul>' : ''}` +
+    status(`${stoppedBy ? `<b>Stopped: ${esc(stoppedBy)}.</b> Click Form Filler to carry on from here.<br>` : ''}${summary}<br><b style="color:#ffd166">${esc(res.save.msg)}</b><br>${problems ? '<ul style="margin:6px 0 0 16px;padding:0;max-height:200px;overflow:auto">' + problems + '</ul>' : ''}` +
       (count['other-page'] ? `<small>${count['other-page']} fields are on other pages: go there with the portal's own buttons and press Alt+Shift+F again.</small><br>` : '') +
       `<small>Log ${sent.ok ? 'saved in the client folder and ' : ''}downloaded. Review this page before you move on.</small>`, [['Close', close]]);
   }
@@ -296,8 +393,8 @@
     let a = null;
     try { a = JSON.parse(adv.text); } catch (e) { /* below */ }
     if (!a || a.error) { status('Could not move the queue on: ' + esc((a && a.error) || adv.error || ''), [['Close', close]]); return; }
-    if (!a.next) { status(`<b>${esc(plan.client)}</b>: ${esc(outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>The queue is finished or paused. Review the SRNs in the app before payment.`, [['Close', close]]); return; }
-    status(`<b>${esc(plan.client)}</b>: ${esc(outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>Next: <b>${esc(a.name)}</b> (${a.left} more waiting)… <small>(Alt+Shift+X stops)</small>`);
+    if (!a.next) { status(`<b>${esc(plan.client)}</b>: ${esc(outcome === 'held' && note ? note : outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>The queue is finished or paused. Review the SRNs in the app before payment.`, [['Close', close]]); return; }
+    status(`<b>${esc(plan.client)}</b>: ${esc(outcome === 'held' && note ? note : outcome)}${srn ? ' (SRN ' + esc(srn) + ')' : ''}.<br>Next: <b>${esc(a.name)}</b> (${a.left} more waiting)… <small>(Alt+Shift+X stops)</small>`);
     setTimeout(() => {
       if (stopLoop) { status('Stopped before the next client.', [['Close', close]]); return; }
       try { sessionStorage.setItem('mcafill_autorun', JSON.stringify({ t: Date.now(), name: a.name, left: a.left })); } catch (e) { /* ignore */ }
@@ -328,8 +425,8 @@
 
   async function renderSide() {
     const p = sidePlan;
-    const items = p.fields.map(f => ({ f, label: f.label, section: f.sectionText || '' }));
-    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, section: 'Tables', table: true })));
+    const items = p.fields.map(f => ({ f, label: f.label, segment: f.segment || '', section: f.group || f.sectionText || '' }));
+    for (const t of p.tables || []) t.rows.forEach((row, i) => row.forEach(c => items.push({ f: c, label: `${t.title} row ${i + 1}: ${c.label}`, segment: 'Tables', section: t.title, table: true })));
     const on = await page('onPage', { keys: items.map(x => x.f.key) });
     const list = items.filter((x, i) => sideAll || x.table || (on && on[i]));
     side.innerHTML = '';
@@ -351,13 +448,27 @@
     side.appendChild(head);
     const body = document.createElement('div');
     body.style.cssText = 'overflow:auto;flex:1;padding:6px 10px 20px';
-    let last = null;
+    let last = null, lastSeg = null;
+    const twoLevel = list.some(y => y.segment);
     for (const x of list) {
+      // Top heading: the form's own segment (AOC-4: General information, Segment I to V). Stays pinned while its fields scroll.
+      if (twoLevel && x.segment !== lastSeg) {
+        lastSeg = x.segment;
+        last = null;
+        const g = document.createElement('div');
+        const n = list.filter(y => y.segment === lastSeg).length;
+        g.textContent = `${lastSeg || 'Other'} (${n})`;
+        g.style.cssText = 'position:sticky;top:-6px;z-index:2;margin:14px -10px 4px;padding:8px 10px;font-weight:600;font-size:14px;color:#fff;background:#102a43';
+        body.appendChild(g);
+      }
       if (x.section !== last) {
         last = x.section;
         const h = document.createElement('div');
-        h.textContent = last || 'General';
-        h.style.cssText = 'margin:10px 0 4px;font-weight:600;color:#334e68;border-bottom:1px solid #d9e2ec';
+        const n = list.filter(y => y.section === last && y.segment === x.segment).length;
+        h.textContent = `${last || 'General'} (${n})`;
+        h.style.cssText = twoLevel
+          ? 'margin:10px 0 4px;padding:4px 0;font-weight:600;font-size:13px;color:#334e68;border-bottom:2px solid #9fb3c8'
+          : 'position:sticky;top:-6px;z-index:1;margin:12px -10px 4px;padding:7px 10px;font-weight:600;font-size:13px;color:#fff;background:#334e68';
         body.appendChild(h);
       }
       const row = document.createElement('div');
@@ -397,15 +508,18 @@
 
   // One entry point for the keys and the side panel buttons.
   //   dump = Save form (Alt+Shift+D), fill = Form Filler (Alt+Shift+F), values = Alt+Shift+S, stop = Alt+Shift+X
-  function command(cmd) {
+  function command(cmd, by) {
     if (cmd === 'stop') {
+      // Say where the stop came from and when: a stop nobody meant to press must be traceable.
+      stoppedBy = `${by || 'Stop'} at ${new Date().toLocaleTimeString('en-GB')}`;
       stopLoop = true;
-      if (busy) { page('abort'); status('Stopping after the current field…'); }
+      if (busy) { page('abort'); status(`Stopping after the current field (${esc(stoppedBy)})…`); }
+      else status(`Stopped: ${esc(stoppedBy)}. Click Form Filler to carry on.`, [['Close', close]]);
       return 'ok';
     }
     if (busy) return 'busy';
     if (cmd === 'dump') doDump();
-    else if (cmd === 'fill') doFill();
+    else if (cmd === 'fill') { window.__mcaClicked = true; doFill(); }
     else if (cmd === 'values') toggleSide();
     else return 'unknown';
     return 'ok';
@@ -423,8 +537,9 @@
     if (!(e.altKey && e.shiftKey)) return;
     const cmd = { KeyD: 'dump', KeyF: 'fill', KeyS: 'values', KeyX: 'stop' }[e.code];
     if (!cmd || (busy && cmd !== 'stop')) return;
+    if (!e.isTrusted) return;  // a real key press only, never one a page script made up
     e.preventDefault();
-    command(cmd);
+    command(cmd, 'Alt+Shift+' + e.code.slice(3) + ' on the keyboard');
   }, true);
 
   // Side panel buttons. Only the frame that holds the form answers, so the panel hears from exactly one.
@@ -436,8 +551,15 @@
       return false;
     }
     if (!msg || msg.type !== 'mcafill-cmd' || !hasForm()) return false;
+    if (msg.cmd === 'probe') panelSeen = Date.now();
+    if (msg.cmd === 'button') {
+      // A button of the current message, pressed in the side panel (matched by its label, so a stale press does nothing).
+      const hit = shown[msg.index];
+      if (hit && hit[0] === msg.label) { hit[1](); reply({ ok: true }); } else reply({ ok: false });
+      return false;
+    }
     if (msg.cmd === 'probe') reply({ ok: true, slug: slug(), busy, version: chrome.runtime.getManifest().version });
-    else reply({ ok: true, slug: slug(), result: command(msg.cmd) });
+    else reply({ ok: true, slug: slug(), result: command(msg.cmd, 'Stop button in the side panel') });
     return false;
   });
 

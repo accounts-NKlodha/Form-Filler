@@ -221,17 +221,31 @@ RULES = [
  (r"repair|maintenance|maintanance", "OEXP.MAINT", "", "Other expenses", _PL),
  (r"advertis|sales promotion|business promotion", "OEXP.ADV", "", "Other expenses", _PL),
  (r"rates and taxes|rates & taxes", "OEXP.RATES", "", "Other expenses", _PL),
- (r"interest", "OI.INT", "", "Interest income", ("indirect incomes",)),
+ (r"interest|\bint\b", "OI.INT", "", "Interest income", ("indirect incomes",)),
  (r"audit fee.*payable|expenses? payable|rent payable", "OCL.EXP", "", "A payable, not a provision", ("provisions",)),
  (r"salary.*payable|salaries payable|wages payable", "OCL.EMP", "", "Employee payable, not a provision", ("provisions",)),
  (r"income ?tax|provision for tax|taxation", "STP.TAX", "OCA.GOVT", "Provision for income tax", ("provisions",)),
  (r"\btds\b|\btcs\b|advance tax|income tax refund", "OCA.GOVT", "OCL.STAT", "Balances with revenue authorities", ("current assets", "loans & advances (asset)")),
  (r"deferred tax asset", "DTA.NET", "DTL.NET", "Non-current: deferred tax asset (net)", ("current assets", "loans & advances (asset)")),
- (r"\bfd\b|fixed deposit|recurring deposit", "CCE.FD", "", "Other bank balances", ("deposits (asset)", "current assets", "investments")),
- (r"general reserve", "RS.GEN", "", "General reserve", ("reserves & surplus",)),
- (r"statutory reserve", "RS.STAT", "", "Statutory reserve (s.45-IC)", ("reserves & surplus",)),
- (r"securities premium|share premium", "RS.SEC", "", "Securities premium", ("reserves & surplus",)),
+ (r"\bfdr?\b|fixed deposit|recurring deposit", "CCE.FD", "", "A deposit with a bank is shown under cash and bank balances, not investments", ("deposits (asset)", "current assets", "investments")),
+ (r"general reserve", "RS.GEN", "", "General reserve", ("reserves & surplus", "capital account")),
+ (r"statutory reserve", "RS.STAT", "", "Statutory reserve (s.45-IC)", ("reserves & surplus", "capital account")),
+ (r"securities premium|share premium", "RS.SEC", "", "Securities premium", ("reserves & surplus", "capital account")),
+ (r"share app", "SAM.OTH", "", "Share application money, not share capital", ("capital account", "suspense a/c", "current liabilities")),
+ (r"reserve|surplus|profit (&|and) loss|retained earning|accumulated (profit|loss)", "RS.SURP", "", "Reserves kept under Capital Account in Tally; Schedule III shows them under Reserves and surplus", ("capital account",)),
 ]
+
+# Tally's own Profit & Loss A/c sits in the Primary group. Some companies renumber it ("300001 Profit & Loss A/c"),
+# so it is recognised by group and name and read under its standard name everywhere.
+PL_AC = "Profit & Loss A/c"
+_PL_AC_RX = re.compile(r"profit\s*(&|and)\s*loss\s*a\s*/?\s*c", re.I)
+
+
+def std_ledger(name, primary):
+    """The ledger name the engine works with: Tally's P&L account under its standard name, anything else unchanged."""
+    if (primary or "").strip().lower() in ("primary", "") and _PL_AC_RX.search(name or ""):
+        return PL_AC
+    return name
 
 
 def group_code(group, primary, groups):
@@ -263,8 +277,9 @@ def resolve(ledger, group, primary, closing, ledgers, groups):
 def suggest(ledger, group, primary):
     """Keyword suggestion for a ledger sitting in a generic Tally group. Returns (code, contra, reason) or None."""
     g, p = (group or "").lower(), (primary or "").lower()
+    bare = re.sub(r"^\s*\d{3,}[A-Za-z]?\s*-?\s*", "", ledger or "")  # "451120 INCOME TAX": the account code is not part of the name
     for rx, code, contra, why, applies in RULES:
-        if (g in applies or p in applies) and re.search(rx, ledger, re.I):
+        if (g in applies or p in applies) and (re.search(rx, ledger, re.I) or re.search(rx, bare, re.I)):
             return code, contra, why
     return None
 

@@ -1,4 +1,4 @@
-# MGT-7A live test: issues list (Chennai Hydro-Maatics, FY 2025-26)
+# MGT-7A live test: issues list (Client name 3, FY 2025-26)
 
 | # | Issue | Status |
 |---|-------|--------|

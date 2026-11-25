@@ -71,6 +71,8 @@ def read_mgt7a(path):
     f["has_share_capital"] = radio("share capital")
     f["agm_held"] = radio("Annual General Meeting")
     f["agm_extension"] = radio("extension")
+    m = re.search(r"date of AGM[^\n]*?(\d\d/\d\d/\d{4})", text, re.I)
+    f["agm_date"] = m.group(1) if m else None  # that year's AGM: it is a members' meeting held DURING the following year
     f["compliance_ok"] = radio("compliances and disclosures")
     for key, pat in (("class", r"\(a\) \*?Class of Company"), ("category", r"\(b\) \*?Category of the Company"),
                      ("subcategory", r"\(c\) \*?Sub-category of the Company")):
@@ -80,6 +82,10 @@ def read_mgt7a(path):
     f["incorporation"] = m.group(1) if m else None
     nxt, _ = _after(lines, r"Website")
     f["website"] = None if not nxt or nxt[0].lower().startswith(("iv", "*date")) else nxt[0]
+    # registered office co-ordinates: "Latitude details <as on filing date> <as on year end>"
+    for key in ("latitude", "longitude"):
+        m = re.search(key + r" details\s+(-?\d{1,3}\.\d+)(?:\s+(-?\d{1,3}\.\d+))?", text, re.I)
+        f[key] = [m.group(1), m.group(2) or m.group(1)] if m else None
 
     # II business activities: "1 G 47 100" (S.No, group code, activity code, % turnover)
     f["activities"] = [{"group": g, "code": c, "pct": p} for _, g, c, p in
@@ -148,6 +154,19 @@ def read_mgt7a(path):
     f["directors"] = [{"din": din, "name": name.strip(), "entitled": int(a), "attended": int(b), "agm": agm}
                       for _, din, name, a, b, _p, agm in
                       re.findall(r"^(\d+) (\d{8}) (.+?) (\d+) (\d+) (" + NUM + r") (Yes|No|NA)$", text, re.M)]
+    if not f["directors"]:
+        # Long names wrap: the name sits on the line above and the line below "1 <DIN> 5 5 100.00 Yes".
+        ls = text.splitlines()
+        row = re.compile(r"^(\d+) (\d{8}) (\d+) (\d+) (" + NUM + r") (Yes|No|NA)$")
+        plain = lambda x: bool(x) and not re.search(r"\d|^Page |^IX |\(", x)  # noqa: E731
+        for i, l in enumerate(ls):
+            m = row.match(l.strip())
+            if not m:
+                continue
+            up = ls[i - 1].strip() if i and plain(ls[i - 1].strip()) else ""
+            dn = ls[i + 1].strip() if i + 1 < len(ls) and plain(ls[i + 1].strip()) else ""
+            f["directors"].append({"din": m.group(2), "name": " ".join(x for x in (up, dn) if x), "entitled": int(m.group(3)),
+                                   "attended": int(m.group(4)), "agm": m.group(6)})
     # IX remuneration of MD / WTD / Manager: amounts row "1 900000 0 0 0 900000.00"
     rem = []
     s = re.search(r"A \*Number of Managing Director", text)
@@ -178,9 +197,24 @@ def read_mgt7a(path):
     return f
 
 
+def _is_mgt7a(path):
+    """True when the PDF's first page says it is Form MGT-7A (the file name alone does not always say so)."""
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            text = (pdf.pages[0].extract_text() or "")[:1500] if pdf.pages else ""
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(re.search(r"form\s*no\.?\s*mgt\s*-?\s*7a", text, re.I))
+
+
 def find_last_mgt7a(folder):
-    for p in sorted(Path(folder).rglob("*.pdf")):
+    pdfs = [p for p in sorted(Path(folder).rglob("*.pdf")) if not {"_replaced", "mca_attachments", "signed", "reports"} & set(p.parts)]
+    for p in pdfs:
         if re.search(r"mgt[-_ ]?7a", p.name, re.I):
+            return p
+    # MCA's own download names look like "MGT-71-AC1234567-XXXX.pdf" (form MGT-7, then the SRN): read the first page to tell
+    for p in pdfs:
+        if re.search(r"mgt[-_ ]?7", p.name, re.I) and _is_mgt7a(p):
             return p
     return None
 
@@ -239,6 +273,10 @@ def read_aoc4(path):
         "area": after(r"^\*Area/Locality$"), "city": after(r"^\*City$"),
         "district": after(r"^\*District$"), "state": after(r"^\*State/UT$"),
     }
+    # (f) Member signing for the firm. A blank box prints the next label instead, so keep only real answers.
+    mn, mno = after(r"^\(i\) Name of the member$"), after(r"^\(ii\) Membership number$")
+    f["auditor"]["member_name"] = mn if mn and not mn.startswith("(") else None
+    f["auditor"]["member_no"] = mno if mno and re.fullmatch(r"\d{4,7}", mno) else None
     f["industry"] = after(r"10 \(a\) \*Type of Industry")
     f["sch3_applicable"] = radio("Schedule III")
     f["consolidated"] = radio("consolidated financial statements")
@@ -305,7 +343,9 @@ def read_aoc4_figures(path):
     for l in lines[start:]:
         if re.match(r"^Page \d+ of \d+$", l):
             continue
-        m = re.match(rf"^(.*?)\s*({_NUM})\s+({_NUM})$", l)
+        # Rows the filer changed carry a third figure (the "reason for change" column): current, previous, reason.
+        m = re.match(rf"^(.*?[A-Za-z)].*?)\s+({_NUM})\s+({_NUM})\s+{_NUM}$", l) or \
+            re.match(rf"^(.*?)\s*({_NUM})\s+({_NUM})$", l)
         if m and re.search(r"[A-Za-z]", m.group(1) or ""):
             rows.append((m.group(1), _fig(m.group(2))))
             pending = ""

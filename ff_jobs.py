@@ -168,7 +168,7 @@ def _resolve(folder, cfg, which, open_cos, jid):
     """The Tally company to read for this year / last year.
 
     Uses the saved name when it is open in Tally. Otherwise, when exactly one open company starts with the
-    saved name (e.g. 'Parekh Investment Limited - Audited' for 'Parekh Investment Limited'), that one is used,
+    saved name (e.g. 'ABC Limited - Audited' for 'ABC Limited'), that one is used,
     saved for next time and written to the audit trail. Otherwise the job stops and staff pick from the list."""
     key = "tally_company_cy" if which == "tb_cy" else "tally_company_py"
     if which == "tb_py" and key in cfg and not cfg[key]:

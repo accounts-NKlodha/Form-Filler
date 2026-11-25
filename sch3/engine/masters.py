@@ -55,7 +55,7 @@ def annual_report_number(inc, fy_end):
     """First FY ends on the 31 March after incorporation; if incorporated 1 Jan - 31 Mar it extends to the next
     31 March (s.2(41)), so that stub has no separate AGM."""
     # Companies Act 2013 s.2(41): Jan-Mar incorporations may extend the first FY to the following 31 March.
-    # Before 1 April 2014 the first FY of a Jan-Mar incorporation ended on the coming 31 March (Parekh: inc 06/01/1995, 31st AGM in 2025).
+    # Before 1 April 2014 the first FY of a Jan-Mar incorporation ended on the coming 31 March (Client name 2: January incorporation).
     if inc.month <= 3 and (inc.year, inc.month) < (2014, 4): first = inc.year
     else: first = inc.year + 1
     return fy_end.year - first + 1

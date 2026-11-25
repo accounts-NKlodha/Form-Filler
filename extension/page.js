@@ -27,7 +27,80 @@
   const GENERIC = /^(text ?box|text ?area|numeric ?box|date ?picker|drop ?down( ?list)?|radio ?button|check ?box|switch|field|untitled)\s*\d*$/i;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const jitter = (a, b) => sleep(a + Math.random() * (b - a));
-  const strip = s => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+  // "Upload Excel" buttons (meetings on MGT-7A): the button opens a file chooser through a hidden file input.
+  function xlButton(a) {
+    const els = [...document.querySelectorAll(`[id^="${a.button}"]`)];
+    const b = els.find(e => /^(button|a|input)$/i.test(e.tagName) && e.offsetParent !== null) || els.map(e => e.querySelector('button, a, input[type="button"]')).find(e => e && e.offsetParent !== null);
+    return b || null;
+  }
+  function headingAbove(el) {
+    // The nearest "A MEMBERS..." / "B BOARD MEETINGS" / "C ATTENDANCE" heading before this element, '' if none is found.
+    const rx = /\b(A\s+MEMBERS|B\s+BOARD MEETINGS|C\s+ATTENDANCE)/gi;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      for (let p = n.previousElementSibling; p; p = p.previousElementSibling) {
+        const all = ((p.innerText || '').match(rx) || []);
+        if (all.length) return all[all.length - 1];
+      }
+    }
+    return '';
+  }
+  async function xlUpload(a, req) {
+    const btn = xlButton(a);
+    if (!btn) return { status: 'manual', msg: 'Upload Excel button not found: upload ' + req.name + ' by hand' };
+    const head = headingAbove(btn);
+    if (head && a.heading && !new RegExp(a.heading, 'i').test(head)) return { status: 'manual', msg: 'could not confirm the box for ' + req.name + ': upload by hand' };
+    safe(() => sessionStorage.setItem('ff_xl_' + a.kind, 'tried'));
+    // Catch the hidden file input the button opens, so no Windows file window appears.
+    let input = null;
+    const proto = HTMLInputElement.prototype, orig = proto.click;
+    proto.click = function () { if (this.type === 'file') { input = this; return; } return orig.apply(this, arguments); };
+    const origPicker = window.showOpenFilePicker;
+    try {
+      safe(() => btn.scrollIntoView({ block: 'center' }));
+      await jitter(300, 600);
+      btn.click();
+      for (let w = 0; w < 15 && !input; w++) await sleep(200);
+    } finally { proto.click = orig; window.showOpenFilePicker = origPicker; }
+    if (!input) {
+      const box = btn.closest('[class*="guidePanelNode"], [class*="guidepanel"]') || btn.parentElement;
+      input = box && box.querySelector('input[type="file"]');
+    }
+    if (!input) return { status: 'manual', msg: 'the portal opened no file box: upload ' + req.name + ' by hand' };
+    const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], req.name, { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // What the portal says about the file (a pop-up), then close it.
+    let said = '';
+    for (let w = 0; w < 24 && !said; w++) {
+      await sleep(500);
+      const dlg = [...document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"]')].find(d => d.offsetParent !== null && (d.innerText || '').trim());
+      if (dlg) {
+        said = (dlg.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        const okb = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => b.offsetParent !== null && /^(ok|close|okay)$/i.test((b.innerText || b.value || '').trim()));
+        if (okb) { okb.click(); await sleep(300); }
+      }
+    }
+    const bad = /error|invalid|not match|fail|incorrect|mismatch|unable/i.test(said);
+    if (bad) return { status: 'manual', msg: 'portal did not take ' + req.name + ': ' + said };
+    safe(() => sessionStorage.setItem('ff_xl_' + a.kind, 'done'));
+    return { status: 'filled', msg: 'uploaded ' + req.name + (said ? ' (portal: ' + said + ')' : ' (no message from the portal: check the box)') };
+  }
+  // Name of the file an attachment box already shows (a listed item or a link ending in a file extension), else ''.
+  function heldFile(box) {
+    try {
+      for (const e of box.querySelectorAll('[class*="fileItem"], [class*="file-item"], .guide-fu-fileItemList li, a, span, div')) {
+        if (e.children.length > 1) continue;
+        const t = (e.innerText || e.textContent || '').trim();
+        if (t.length < 120 && /\.(pdf|jpe?g|png|xlsm?)$/i.test(t) && e.offsetParent !== null) return t;
+      }
+    } catch (e) { /* not readable: treat as empty */ }
+    return '';
+  }
+
+  const strip = s => String(s ?? '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/(?:[#.@][\w-]+(?:::?[\w-]+)*\s*,?\s*)+\{[^{}]*\}/g, ' ').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   const gb = () => (window.guideBridge && typeof window.guideBridge.visit === 'function') ? window.guideBridge : null;
   const safe = (fn, dflt = null) => { try { return fn(); } catch (e) { return dflt; } };
@@ -36,6 +109,7 @@
   // Checkbox options can also be "<base>_<n>_widget".
   const baseOfWidget = id => id.replace(/([-_]\d+)?_widget$/, '');
   let abort = false;
+  const tablesDone = new Set();  // tables seen complete in this page load
   let fieldMap = {};
 
   function typeOf(cls) {
@@ -446,7 +520,8 @@
         return { ...entry, status: 'unchanged', msg: 'kept MCA pre-filled previous-year figure' };
       }
     }
-    if (f.type !== 'checkbox' && hasValue(f, els, cmp)) {
+    const curV = () => (cmp ? safe(() => cmp.value) : domValue(f, els));
+    if (f.type !== 'checkbox' && hasValue(f, els, cmp) && !(f.overwrite && !matches(f, curV()))) {
       return { ...entry, status: 'unchanged', msg: matches(f, cmp ? safe(() => cmp.value) : domValue(f, els)) ? '' : 'already has a value: kept' };
     }
     if (f.type === 'dropdown' && els.length && els[0].tagName === 'SELECT' && f.display) {
@@ -471,11 +546,13 @@
       // answer) makes MCA clear every field that depends on it, so an already-ticked option is left alone.
       const target = radioTarget(f, els);
       if (!target) return { ...entry, status: 'failed', msg: 'no radio option "' + (f.display ?? f.value) + '"' };
-      if (target.checked) return { ...entry, status: 'unchanged' };
+      // For the log: what the portal's own form model holds for this question (an option code, not client data).
+      const held = () => 'portal holds: ' + JSON.stringify(cmp ? safe(() => cmp.value) : undefined) + '; ticked on screen: ' + els.filter(e => e.checked).length;
+      if (target.checked) return { ...entry, status: 'unchanged', msg: held() };
       if (isShown(target)) safe(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }));
       target.click();
       await sleep(200);
-      return target.checked ? { ...entry, method: 'dom', status: 'filled' }
+      return target.checked ? { ...entry, method: 'dom', status: 'filled', msg: held() }
                             : { ...entry, method: 'dom', status: 'failed', msg: 'radio did not stay ticked' };
     }
     const cur = cmp ? safe(() => cmp.value) : domValue(f, els);
@@ -525,13 +602,43 @@
   }
   const before = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-  async function dismissSaved() {
-    await sleep(400);
-    for (const dlg of document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"]')) {
-      if (!isShown(dlg) || !/saved|success/i.test(dlg.innerText || '')) continue;
-      const ok = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && /^(ok|close|okay)$/i.test(strip(b.innerText || b.value || '')));
-      if (ok) { ok.click(); await sleep(300); }
+  // The portal's "Data Added Successfully" box can take a few seconds to come up: wait for it, then press its OK.
+  async function dismissSaved(maxMs = 4000) {
+    for (let t = 0; t <= maxMs; t += 400) {
+      await sleep(400);
+      let hit = false;
+      for (const dlg of document.querySelectorAll('[role="dialog"], .modal, [class*="modal"], [class*="Modal"], [class*="popup"], [class*="Popup"]')) {
+        if (!isShown(dlg) || !/saved|success|added/i.test(dlg.innerText || '')) continue;
+        const ok = [...dlg.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && /^(ok|close|okay)$/i.test(strip(b.innerText || b.value || '')));
+        if (ok) { ok.click(); hit = true; await sleep(300); }
+      }
+      if (hit) return true;
     }
+    return false;
+  }
+
+  // Fields the tool typed in this tab (key -> times). A value the portal empties again after Save is typed
+  // once more and then left alone, so a run can never go round the same section for ever.
+  const given = {};
+  let lastLocked = -1;
+
+  // After a Save: empty, editable fields that show the portal's own "Please enter ..." message.
+  function saveErrors(skip) {
+    const need = [];
+    for (const m of document.querySelectorAll('[id^="guideContainer"] div, [id^="guideContainer"] span, [id^="guideContainer"] p')) {
+      if (m.childElementCount || !/^please (enter|select|provide|choose)|is mandatory|is required/i.test(strip(m.textContent || '')) || !isShown(m)) continue;
+      // Walk up from the message to the nearest wrapper that holds an input (the field's own box, or its table cell).
+      let el = null;
+      for (let box = m.parentElement, up = 0; box && up < 4 && !el; box = box.parentElement, up++) {
+        const ins = box.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), select, textarea');
+        if (ins.length === 1) el = ins[0];
+        else if (ins.length > 1) break;
+      }
+      if (!el || !isShown(el) || el.disabled || el.readOnly || strip(el.value || '') || (skip && skip.has(el))) continue;
+      const lab = safe(() => domLabel(el), '') || strip(m.textContent || '');
+      if (!need.includes(lab)) need.push(lab);
+    }
+    return need;
   }
 
   function findSave() {
@@ -561,7 +668,7 @@
     }
     return '';
   }
-  async function awaitSubmit(maxMs) {
+  async function awaitSubmit(maxMs, click) {
     const before = readSrn();
     const sub = [...document.querySelectorAll('button, [type="button"], [type="submit"]')]
       .find(b => isShown(b) && !b.disabled && /^submit$/i.test(strip(b.innerText || b.value || '')));
@@ -571,6 +678,12 @@
     sub.style.outlineOffset = '3px';
     sub.style.boxShadow = '0 0 0 8px rgba(255,77,79,.35)';
     abort = false;
+    if (click) {
+      // Only when the partner switched automatic Submit on for this queue run. Exact "Submit" text only; never DSC, Pay or Upload.
+      await sleep(1200);
+      if (abort) return { srn: '', msg: 'stopped' };
+      sub.click();
+    }
     for (let t = 0; t < maxMs && !abort; t += 1000) {
       await sleep(1000);
       const s = readSrn();
@@ -592,6 +705,7 @@
     if (g) safe(() => g.visit(c => { const id = safe(() => c.id); if (id) map[keyOf(id)] = c; }));
     const total = plan.fields.length + (plan.tables || []).reduce((n, t) => n + t.rows.reduce((m, r) => m + r.length, 0), 0);
     let done = 0, lastSection = null;
+    if (plan.autoSave) await dismissSaved(400);  // a "saved" box left open from the round before
 
     for (const e of plan.errors || []) log.push({ ...e, status: 'failed', method: 'excel' });
 
@@ -603,8 +717,10 @@
       const c = cmpOf(f), els = widgets((c && safe(() => c.id)) || f.domBase);
       if (!els.some(isShown) || els.some(e => e.readOnly || e.disabled) || (c && safe(() => c.readOnly))) return false;
       if (f.type === 'checkbox' && typeof f.value === 'boolean') return els[0].checked !== f.value;
+      if ((given[f.key] || 0) >= 2) return false;  // typed twice, emptied twice by the portal: leave it
       return !hasValue(f, els, c);
     };
+    let cleared = 0;
     let stopAt = null;
     const firstWork = plan.fields.find(needsWork);
     const firstEl = firstWork && elOf(firstWork);
@@ -633,6 +749,7 @@
       }
     };
 
+    const tFill0 = Date.now();
     for (const f of plan.fields) {
       if (abort) { log.push({ code: f.code, key: f.key, label: f.label, status: 'not-run', msg: 'stopped by user' }); continue; }
       if (beyond(elOf(f))) { passedStop = true; log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'next-section', msg: 'below the Save to click first' }); done++; await runSectionTables(f); continue; }
@@ -644,11 +761,20 @@
       const quickEl = elOf(f);
       if (!quickEl && !f.copyFrom) { log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'other-page', msg: 'not on this page' }); done++; await runSectionTables(f); continue; }
       progress({ done, total, label: f.label, section: f.sectionText });
-      if (needsWork(f)) await jitter(150, 420);
       let cmp = map[f.key] || null;
       if (!cmp && g && f.som) cmp = safe(() => g.resolveNode(f.som));
+      if ((given[f.key] || 0) >= 2 && !(f.type === 'checkbox' && typeof f.value === 'boolean')) {
+        const els2 = widgets((cmp && safe(() => cmp.id)) || f.domBase);
+        if (els2.some(isShown) && !els2.some(e => e.readOnly || e.disabled) && !hasValue(f, els2, cmp)) {
+          cleared++;
+          log.push({ code: f.code, key: f.key, label: f.label, section: f.sectionText || '', status: 'unchanged', el: els2[0], msg: 'the portal emptied this field after Save twice: left blank' });
+          done++; await runSectionTables(f); continue;
+        }
+      }
+      if (needsWork(f)) await jitter(150, 420);
       let r;
       try { r = await fillOneSafe(g, f, cmp); } catch (e) { r = { code: f.code, key: f.key, label: f.label, status: 'failed', msg: String(e && e.message || e) }; }
+      if (r.status === 'filled') given[f.key] = (given[f.key] || 0) + 1;
       r.retry = () => fillOneSafe(g, f, map[f.key] || (g && f.som ? safe(() => g.resolveNode(f.som)) : null));
       log.push(r);
       done++;
@@ -663,6 +789,9 @@
       const cells = t.rows.flat();
       const manual = msg => { for (const c of cells) log.push({ code: c.code, key: c.key, label: `${t.title} row ${c.row + 1}: ${c.label}`, value: c.display ?? c.value, status: 'manual', msg }); };
       if (abort) { manual('stopped by user'); return; }
+      // A table that already held every value earlier in this run is not walked again each round.
+      if (t.groupSom && tablesDone.has(t.groupSom)) { for (const c of cells) log.push({ code: c.code, key: c.key, label: `${t.title} row ${c.row + 1}: ${c.label}`, status: 'unchanged', msg: 'checked earlier in this run' }); return; }
+      const logFrom = log.length;
       if (!g || !t.groupSom) { manual('repeatable table: fill by hand (no form model)'); return; }
       const grp = safe(() => g.resolveNode(t.groupSom));
       const gid = (grp && safe(() => grp.id, '')) || '';
@@ -690,6 +819,7 @@
       const im = grp && safe(() => grp.instanceManager);
       if (!im) { manual('repeatable table: could not find its row manager, fill by hand'); return; }
       await jitter(600, 1200);
+      if (abort) { manual('stopped by user'); return; }
       for (let r = 0; r < t.rows.length && !abort; r++) {
         let count = safe(() => im.instanceCount, 0);
         while (count <= r) {
@@ -719,6 +849,8 @@
           done++;
         }
       }
+      const mine = log.slice(logFrom);
+      if (!abort && mine.length === cells.length && mine.every(e => e.status === 'unchanged')) tablesDone.add(t.groupSom);
         }
     for (const t of [...tablesLeft]) await doTableFn(t);
 
@@ -769,6 +901,7 @@
     }
 
     // Point staff at the Save to press: the first Save below the last field filled on this page.
+    const tFill1 = Date.now();
     let save = { clicked: false, msg: '' };
     if (abort) save.msg = 'stopped by user';
     else {
@@ -800,14 +933,30 @@
           await sleep(2500);
           await dismissSaved();
           save.msg = 'Saved';
+          if (cleared) { save.cleared = cleared; save.msg = `Saved (${cleared} previous-year fields the portal emptied again were left blank)`; }
           // Read-only fields the portal fills itself don't hold the page back: only fields below an unclicked Save do.
           save.more = log.some(e => e.status === 'next-section');
+          // Fields still locked below the Save just pressed: the portal opens them once that Save is in.
+          // Look again in the next round; if the same number is still locked then, the page needs staff.
+          // Only fields BELOW the Save just pressed can still open: a locked field above it (one the portal fills
+          // itself, such as the e-mail ID) has had its Save already and must not cost another full pass.
+          const lockedBelow = lockedEls.filter(el => before(btn, el)).length;
+          if (lockedBelow && lockedBelow !== lastLocked) save.more = true;
+          lastLocked = lockedBelow;
           // A field hidden by an earlier answer may open once that answer is saved: give it one more round.
           const seen = (window.__mcaHiddenSeen = window.__mcaHiddenSeen || new Set());
           const fresh = log.filter(e => e.status === 'hidden' && !seen.has(e.key + '|' + e.label));
           fresh.forEach(e => seen.add(e.key + '|' + e.label));
           if (fresh.length) save.more = true;
-          const next = plan.autoNext && !save.more && [...document.querySelectorAll('button, [type="button"]')]
+          // The portal refused the Save: it shows "Please enter ..." under empty fields the tool has no value for.
+          const later = new Set(plan.fields.map(f => elOf(f)).filter(el => el && beyond(el)));
+          const errs = saveErrors(later);
+          if (errs.length) {
+            save.stuck = true;
+            save.need = errs.slice(0, 8);
+            save.msg = `The portal did not accept this Save: ${errs.length} empty field${errs.length > 1 ? 's' : ''} on this page show${errs.length > 1 ? '' : 's'} "Please enter"`;
+          }
+          const next = !save.stuck && plan.autoNext && !save.more && [...document.querySelectorAll('button, [type="button"]')]
             .find(b => isShown(b) && !b.disabled && /^next$/i.test(strip(b.innerText || b.value || '')) && !BLOCKED.test(strip(b.innerText || b.value || '')));
           if (next) {
             await jitter(400, 800);
@@ -815,15 +964,32 @@
             save.next = true;
             save.msg = 'Saved and moved to the next page';
             await sleep(3000);
-          } else if (plan.watchSubmit && !save.more) {
-            save.lastPage = true;  // filing queue: staff click Submit here; content.js waits for the SRN
+          } else if (plan.watchSubmit && !save.more && !save.stuck) {
+            const hasSubmit = [...document.querySelectorAll('button, [type="button"], [type="submit"]')]
+              .some(b => isShown(b) && /^submit$/i.test(strip(b.innerText || b.value || '')));
+            if (hasSubmit) save.lastPage = true;  // filing queue: staff click Submit here; content.js waits for the SRN
+            else {
+              // Not the last page, yet nothing left to fill and no Next: the portal is holding sections locked
+              // until a mandatory field on this page is entered and saved. Name those fields for staff.
+              const need = [];
+              for (const el of document.querySelectorAll('[id^="guideContainer"] input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), [id^="guideContainer"] select')) {
+                if (!isShown(el) || el.disabled || el.readOnly || strip(el.value || '')) continue;
+                const box = el.closest('[class*="guideFieldNode"], [class*="guidefield"], [class*="guideField"]');
+                const lab = strip(((box && box.querySelector('label, [class*="guideFieldLabel"]')) || {}).innerText || '');
+                if (lab.includes('*') && !need.includes(lab)) need.push(lab);
+                if (need.length >= 6) break;
+              }
+              save.stuck = true;
+              save.need = need;
+              save.msg = locked ? `Saved, but ${locked} fields further down are still locked by the portal` : 'Saved, but the portal shows no Next button';
+            }
           }
         }
       }
     }
     for (const e of log) { delete e.retry; delete e.el; }
     progress({ done: total, total, label: 'done', section: '' });
-    return { log, save };
+    return { log, save, timing: { fillMs: tFill1 - tFill0, saveMs: Date.now() - tFill1 } };
   }
 
   // ---------- wiring ----------
@@ -837,7 +1003,7 @@
       else if (req.op === 'dump') res = dump();
       else if (req.op === 'fill') res = await fill(req.plan);
       else if (req.op === 'abort') { abort = true; res = { ok: true }; }
-      else if (req.op === 'awaitSubmit') res = await awaitSubmit(req.maxMs || 1800000);
+      else if (req.op === 'awaitSubmit') res = await awaitSubmit(req.maxMs || 1800000, !!req.click);
       else if (req.op === 'fillOne') {
         const g = gb(); const f = req.field;
         let cmp = null;
@@ -863,13 +1029,21 @@
       else if (req.op === 'attachState') {
         // For autoSave plans (ADT-1): is this attachment on screen, and does it already hold a file?
         res = req.list.map(a => {
+          if (a.button) {
+            const b = xlButton(a);
+            if (!b) return 'other-page';
+            const box = b.closest('[class*="guidePanelNode"], [class*="guidepanel"]') || b.parentElement;
+            const asks = /upload a excel|upload an excel/i.test((box && box.innerText) || '');
+            const done = safe(() => sessionStorage.getItem('ff_xl_' + a.kind), '');
+            return done && !asks ? 'has-file' : 'empty';
+          }
           const els = widgets(a.domBase).filter(isShown);
           const any = document.querySelector(`[id^="${a.domBase}"]`);
           const box = (els[0] || any) && (els[0] || any).closest('[class*="guideFieldNode"]');
           if (!box || !isShown(box)) return 'other-page';
           const listed = box.querySelector('[class*="fileItem"], [class*="file-item"], .guide-fu-fileItemList li');
           const txt = [...box.querySelectorAll('input[type="text"], input:not([type])')].map(i => norm(i.value)).join('');
-          return (listed && norm(listed.innerText)) || /\.pdf/i.test(txt) ? 'has-file' : 'empty';
+          return (listed && norm(listed.innerText)) || /\.pdf/i.test(txt) || heldFile(box) ? 'has-file' : 'empty';
         });
       }
       else if (req.op === 'notices') {
@@ -880,25 +1054,34 @@
         autoNotices = true;
         // Choose the PDF (sent by the local server) and press this attachment's own Upload button.
         const a = req.att;
+        if (a.button) res = await xlUpload(a, req);
         const any = widgets(a.domBase).find(isShown) || document.querySelector(`[id^="${a.domBase}"]`);
         const box = any && any.closest('[class*="guideFieldNode"]');
         const input = box && box.querySelector('input[type="file"]');
-        if (!input) res = { status: 'failed', msg: 'file box not found' };
+        const had = box && heldFile(box);
+        if (a.button) { /* handled above */ }
+        else if (had) res = { status: 'unchanged', msg: 'already attached: ' + had };
+        else if (!input) res = { status: 'failed', msg: 'file box not found' };
         else {
           const bytes = Uint8Array.from(atob(req.b64), c => c.charCodeAt(0));
           const dt = new DataTransfer();
-          const type = /\.jpe?g$/i.test(req.name) ? 'image/jpeg' : /\.png$/i.test(req.name) ? 'image/png' : 'application/pdf';
+          const type = /\.jpe?g$/i.test(req.name) ? 'image/jpeg' : /\.png$/i.test(req.name) ? 'image/png'
+            : /\.xlsm$/i.test(req.name) ? 'application/vnd.ms-excel.sheet.macroEnabled.12'
+            : /\.xlsx$/i.test(req.name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
           dt.items.add(new File([bytes], req.name, { type }));
           input.files = dt.files;
           input.dispatchEvent(new Event('change', { bubbles: true }));
           input.dispatchEvent(new Event('input', { bubbles: true }));
           safe(() => box.scrollIntoView({ block: 'center' }));
           let up = null;
-          for (let w = 0; w < 20 && !up; w++) {
+          let direct = '';  // some boxes (MGT-7A photo) have no Upload button: the file is listed as soon as it is chosen
+          for (let w = 0; w < 20 && !up && !direct; w++) {
             await sleep(300);
+            direct = heldFile(box);
             up = [...box.querySelectorAll('button, [type="button"], a')].find(b => isShown(b) && !b.disabled && /^upload$/i.test(strip(b.innerText || b.value || '')));
           }
-          if (!up) res = { status: 'failed', msg: 'Upload button did not become active' };
+          if (!up && direct) res = { status: 'filled', msg: 'attached ' + direct };
+          else if (!up) res = { status: 'failed', msg: 'Upload button did not become active' };
           else {
             await jitter(300, 600);
             up.click();

@@ -10,10 +10,35 @@ from pathlib import Path
 import openpyxl
 
 
-def _find(folder, pat):
-    for p in sorted(Path(folder).glob("*.xlsm")):
-        if re.search(pat, p.name, re.I) and "this year" not in p.name.lower():
-            return p
+TEMPLATES = Path(__file__).resolve().parent / "Samples" / "MGT 7A"  # MCA's blank formats, kept beside the app
+
+
+def _find(folder, pat, shared=True):
+    """Last year's copy in the client folder, else (shared) MCA's format from the app's Samples folder.
+    A shared file may hold another company's rows: use it only where every row is rewritten."""
+    for d in [Path(folder)] + ([TEMPLATES] if shared else []):
+        for p in sorted(d.glob("*.xlsm")) if d.exists() else []:
+            if re.search(pat, p.name, re.I) and "this year" not in p.name.lower():
+                return p
+    return None
+
+
+def _from_filed_form(folder, pat):
+    """The Excel attached to last year's filed MGT-7A (MCA keeps attachments inside the form PDF), saved into the client folder."""
+    try:
+        import lastyear
+        from pypdf import PdfReader
+        pdf = lastyear.find_last_mgt7a(folder)
+        if not pdf:
+            return None
+        for name, datas in (PdfReader(str(pdf)).attachments or {}).items():
+            if re.search(pat, name, re.I) and name.lower().endswith((".xlsm", ".xlsx")) and datas:
+                out = Path(folder) / re.sub(r"^\d+_", "", name)
+                if not out.exists():
+                    out.write_bytes(datas[0])
+                return out
+    except Exception:  # noqa: BLE001  unreadable PDF: staff attach by hand
+        return None
     return None
 
 
@@ -36,7 +61,8 @@ def make(folder, facts, answers, fy_label):
     out_dir = folder / "attachments"
     made = []
     dirs = (facts or {}).get("directors") or []
-    n_dirs = len(dirs)
+    last_bm = (facts or {}).get("board_meetings") or []
+    n_dirs = len(dirs) or int((last_bm[-1].get("directors") if last_bm else 0) or 0)  # no director list read: last year's board strength
     all_att = str(answers.get("all_attended") or "Yes").lower().startswith("y")
 
     bm_src = _find(folder, r"board\s*meeting")
@@ -50,21 +76,24 @@ def make(folder, facts, answers, fy_label):
         made.append((out.name, f"{len(rows)} board meetings" + ("" if all_att else ": enter attendance per meeting")))
 
     mm_src = _find(folder, r"meeting of members")
-    agm = answers.get("agm_date")
-    held = str(answers.get("agm_held") or "Yes").lower().startswith("y")
+    # Members' meetings held DURING the year: the AGM of the previous year (its date is on last year's form),
+    # not this year's AGM, which falls after the year end.
+    agm = answers.get("prev_agm_date") or (facts or {}).get("agm_date")
+    held = bool(agm)
     if mm_src and agm and held:
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Meeting of members - {fy_label}.xlsm"
         last = ((facts or {}).get("member_meetings") or [{}])[0]
-        entitled = last.get("entitled")
+        entitled = last.get("entitled") or (facts or {}).get("n_holders_listed")
         _rewrite(mm_src, out, "Sheet1", 2, [["AGM", datetime.strptime(agm, "%d/%m/%Y"), entitled,
                                              entitled if all_att else None, 100 if all_att else None]])
-        made.append((out.name, "AGM row"))
+        made.append((out.name, f"last year's AGM, held {agm}"))
 
-    sh_src = _find(folder, r"shareholder")
+    # never another company's list: the client's own copy, else the one inside last year's filed form
+    sh_src = _find(folder, r"shareholder", shared=False) or _from_filed_form(folder, r"shareholder")
     if sh_src and not str(answers.get("holders_changed") or "No").lower().startswith("y"):
         out_dir.mkdir(exist_ok=True)
         out = out_dir / f"Shareholder list - {fy_label}.xlsm"
         shutil.copyfile(sh_src, out)
-        made.append((out.name, "same shareholders as last year (no change answered)"))
+        made.append((out.name, f"same shareholders as last year (no change answered), from {sh_src.name}"))
     return made

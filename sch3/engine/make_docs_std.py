@@ -39,8 +39,64 @@ def load(xlsx):
             if lab and len(nums) >= 2: out.setdefault(lab.strip(), (nums[-2] or 0, nums[-1] or 0))
         return out
     pl, notes = rows("PL"), rows("Notes")
-    rp = [r for r in wb["Related_Parties"].iter_rows(min_row=2, values_only=True) if r[0]]
+    rp = [r for r in wb["Related_Parties"].iter_rows(min_row=2, values_only=True) if r[0]] if "Related_Parties" in wb.sheetnames else []
     return st, pl, notes, rp
+
+
+_LY_KEYS = {"notice.docx": ("notice",), "board report.docx": ("board", "br-", "br ", "br_", "director"),
+            "auditors report.docx": ("audit",), "sap.docx": ("sap", "accounting polic")}
+
+
+def _find_ly(ly, n):
+    """Last year's file under its standard name, else the Word file staff uploaded whose name says what it is."""
+    p = os.path.join(ly, n)
+    if os.path.exists(p) or n not in _LY_KEYS or not os.path.isdir(ly):
+        return p
+    for f in sorted(os.listdir(ly)):
+        low = f.lower()
+        if low.endswith(".docx") and not low.startswith("~") and any(k in low for k in _LY_KEYS[n]):
+            return os.path.join(ly, f)
+    return p
+
+
+_FOOT = re.compile(r"^(\s*dated?\s*[:\-\u2013]?\s*)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})", re.I)
+
+
+def _foot_dates(out, doc_date, list_date):
+    """Every 'Date: ...' line at the foot of the drafted documents and lists carries the board's signing date,
+    whatever date last year's file had there. Returns the number of lines changed."""
+    n = 0
+    for f in sorted(os.listdir(out)):
+        path = os.path.join(out, f)
+        if f.startswith("~"): continue
+        if f.lower().endswith(".docx"):
+            d = docx.Document(path); hit = 0
+            for p in paras(d):
+                m = _FOOT.match(p.text)
+                if m and m.group(2) != doc_date: hit += replace(p, m.group(2), doc_date)
+            if hit: d.save(path); n += hit
+        elif f.lower().endswith(".xlsx"):
+            x = openpyxl.load_workbook(path); hit = 0
+            for ws in x.worksheets:
+                for row in ws.iter_rows():
+                    for c in row:
+                        if isinstance(c.value, str):
+                            m = _FOOT.match(c.value)
+                            if m and m.group(2) != list_date:
+                                c.value = c.value[:m.start(2)] + list_date + c.value[m.end(2):]; hit += 1
+            if hit: x.save(path); n += hit
+    return n
+
+
+class _Setup(dict):
+    """Setup values; a blank or missing text row reads as '' so one empty box does not stop the whole document set."""
+    def __getitem__(self, k):
+        v = dict.get(self, k)
+        return "" if v is None else v
+
+    def get(self, k, default=None):
+        v = dict.get(self, k)
+        return default if v is None else v
 
 
 def pick(d, *prefixes):
@@ -53,6 +109,11 @@ def pick(d, *prefixes):
 def main(cfg_path, xlsx, ly, out):
     cfg = json.load(open(cfg_path)); D = cfg["docs"]; S = cfg["setup"]
     st, pl, notes, rp = load(xlsx)
+    for k, v in (S or {}).items():  # typed in the app after the workbook was built
+        if v not in (None, "") and st.get(k) in (None, ""): st[k] = v
+    blank = sorted(k for k in ("Registered office address", "Signing director 1 name", "Signing director 2 name") if not st.get(k))
+    st = _Setup(st)
+    if blank: FLAGS.append("Blank in Setup, so left empty in the reports: " + ", ".join(blank) + ". Fill them and generate again.")
     os.makedirs(out, exist_ok=True)
     FYE = int(str(st["Current year - balance sheet date"])[-4:]); FY, PFY = f"{FYE-1}-{FYE}", f"{FYE-2}-{FYE-1}"
     CO = st["Company name"]; SHORT = D.get("short", CO)
@@ -62,7 +123,9 @@ def main(cfg_path, xlsx, ly, out):
     BMS = [x.strip() for x in str(st.get("Board meeting dates", "")).split(",") if x.strip()]
     PRES = [x.strip() for x in str(st.get("Directors present at each board meeting", "")).split(",")]
     STRENGTH = str(st.get("Board strength (number of directors)", 2))
-    D1, D2 = st["Signing director 1 name"].upper(), st["Signing director 2 name"].upper()
+    if not BMS: FLAGS.append("Board's report: no board meeting dates. Type them on Inputs for the forms, then draft again.")
+    elif not st.get("Board strength (number of directors)"): FLAGS.append("Board's report: board strength was not known, so 2 directors is shown for every meeting. Check the meetings table.")
+    D1, D2 = str(st.get("Signing director 1 name") or "").upper(), str(st.get("Signing director 2 name") or "").upper()
     num = lambda x: ("0.00" if DEC else "0") if not x else inr(x, DEC)
 
     rev, oi = pick(pl, "I. Revenue"), pick(pl, "II. Other income")
@@ -88,7 +151,7 @@ def main(cfg_path, xlsx, ly, out):
         ("KOMAL LODHA N", "KOMAL LODHA"), ("(Figures in 00s)", "")] + [tuple(x) for x in D.get("name_fixes", [])]
     COMMON += [(m, UDIN) for m in D.get("ly_udins", [])]
     fn = lambda kind: os.path.join(out, f"{SHORT} - {kind}")
-    lyf = lambda n: os.path.join(ly, n)
+    lyf = lambda n: _find_ly(ly, n)
 
     # ------------------------------------------------------------ notice
     auditor_agm = pdate(st["Date of AGM appointing auditor"]) if st.get("Date of AGM appointing auditor") else None
@@ -228,6 +291,8 @@ def main(cfg_path, xlsx, ly, out):
                         for o, n in pairs: v = v.replace(o, n)
                         if v != c.value: c.value = v
         x.save(fn(f"{kind} 31-03-{FYE}.xlsx"))
+    n_foot = _foot_dates(out, DOC, LD)
+    if n_foot: FLAGS.append(f"{n_foot} date line(s) at the foot of the documents and lists were set to the signing date {DOC}.")
     FLAGS.append(f"Dates: documents {DOC}, AGM {AGM.strftime('%A')} {long_date(AGM)}, lists {LD}. UDIN: {UDIN}.")
     json.dump(FLAGS, open(os.path.join(out, "flags.json"), "w"), indent=1)
     return FLAGS

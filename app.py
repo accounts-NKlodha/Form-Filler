@@ -368,19 +368,10 @@ def esc(s):
 
 
 def shell(title, body, msg=""):
-    return f"""<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>{esc(title)} · N K Lodha &amp; Co</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<style>{CSS}</style></head><body>
-<aside class=side><a class=brandrow href="/"><span class=tile>N</span><span><b>ROC Autopilot</b><small>N K Lodha &amp; Co</small></span></a>
-<nav><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>Filings</a><a href="/adt1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/></svg>ADT-1 companies</a><a href="/admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>Forms &amp; settings</a><a href="/ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>Local AI</a></nav>
-<div class=sidefoot><div class=label>Human in the loop</div>Login, captcha, Submit, DSC and payment stay with your team.</div></aside>
-<div class=wrap><div class=topbar><span class=trail>ROC filings / <b>{esc(title)}</b></span><span class=live><i></i>Live on office LAN · port 8742</span></div>
-<main>{f'<div class=msg>{esc(msg)}</div>' if msg else ''}{body}</main>
-<footer><span>N K Lodha &amp; Co · Chartered Accountants, Chennai</span><span>AOC-4 · MGT-7A · ADT-1 on MCA V3</span></footer></div>
-<script>{{const p=location.pathname;for(const a of document.querySelectorAll('aside nav a')){{const h=a.getAttribute('href');if(h==='/'?(p==='/'||p.startsWith('/client')):p.startsWith(h))a.classList.add('on')}}}}for(const el of document.querySelectorAll('[data-count]')){{const t=+el.dataset.count;if(!t||matchMedia('(prefers-reduced-motion: reduce)').matches)continue;let s=null;const f=n=>{{s=s||n;const p=Math.min(1,(n-s)/800);el.textContent=Math.round(t*(1-Math.pow(1-p,3))).toLocaleString('en-IN');if(p<1)requestAnimationFrame(f)}};requestAnimationFrame(f)}}</script>
-</body></html>"""
+    """The older screens (client details, Local AI) inside the one Form Filler shell."""
+    import ff_ui
+    active = "/ai" if title.startswith("Local AI") else "/filings"
+    return ff_ui.shell(title, body, active, msg)
 
 
 ON = '<span class="pill on">Filling now</span>'
@@ -587,7 +578,7 @@ def client_page(name, msg=""):
     n_done = sum(flags)
     meta = ((f"<span class=mono>{esc(cin)}</span>" if cin else "") + (f"<span>FY ended {esc(f.get('fy_end'))}</span>" if f.get("fy_end") else "")
             + "".join(f"<span>{FORM_LABEL.get(s, s)}</span>" for s in forms))
-    head = (f"<div class=\"phead chead\"><div><div class=eyebrow><a href=/ style=\"color:inherit;text-decoration:none\">&larr; All filings</a></div>"
+    head = (f"<div class=\"phead chead\"><div><div class=eyebrow><a href=/filings style=\"color:inherit;text-decoration:none\">&larr; All clients</a></div>"
             f"<h1>{esc(folder.name)}</h1><div class=meta>{meta}</div></div>"
             f"<div class=prog><div class=l>Progress</div><div class=v>{n_done} of 4</div><div class=\"bar{' full' if n_done == 4 else ''}\"><i style=\"width:{n_done * 25}%\"></i></div></div></div>{stepper}")
     body = (head
@@ -685,6 +676,29 @@ def build(folder):
     return msg
 
 
+def refresh_questions(folder):
+    """Rebuild the inputs workbook when the app now asks a question it does not hold yet (saved answers are kept).
+    Returns True when it was rebuilt."""
+    import smart
+    p = inputs_path(folder)
+    if not p.exists():
+        return False
+    forms = [s for s in (load(folder).get("forms") or []) if s in SMART]
+    want = {q[0] for q in smart.QUESTIONS} if forms else set()
+    if "aoc4" in forms:
+        want |= {q[0] for q in smart.QUESTIONS_AOC4}
+    have = {q[0] for q in questions(folder)[0]}
+    stale = bool(forms) and load(folder).get("rules") != smart.RULES_VERSION
+    if not want - have and not stale:
+        return False
+    try:
+        build(folder)
+        save(folder, rules=smart.RULES_VERSION)
+        return True
+    except Exception:  # noqa: BLE001  (workbook open in Excel, form not captured): the old questions stay
+        return False
+
+
 def save_answers(folder, form):
     p = inputs_path(folder)
     wb = openpyxl.load_workbook(p)
@@ -770,6 +784,11 @@ def handle_post(path, query, body, form):
             return 409, json.dumps({"error": "a file with that name is open in Excel: close it and try again"}), "application/json", None
         except Exception as e:  # noqa: BLE001
             return 400, json.dumps({"error": str(e)}), "application/json", None
+    if path == "/queue/switch":
+        try:
+            return 200, json.dumps(_queue().switch(str(json.loads(body or b"{}").get("slug") or "").lower()), default=str), "application/json", None
+        except Exception as e:  # noqa: BLE001
+            return 400, json.dumps({"error": str(e)}), "application/json", None
     if path in ("/queue/advance", "/api/queue/start", "/api/queue/pause"):
         try:
             Q = _queue()
@@ -810,7 +829,7 @@ def handle_post(path, query, body, form):
                 msg = Q.edit(form) or "Updated."
         except Exception as e:  # noqa: BLE001
             msg = f"Error: {e}"
-        return 303, "", "text/html", f"/?msg={quote(msg)}#queue"
+        return 303, "", "text/html", f"/filings?msg={quote(msg)}#queue"
     if path == "/api/active":
         try:
             d = json.loads(body or b"{}")
@@ -863,5 +882,5 @@ def handle_post(path, query, body, form):
     except PermissionError as e:
         return back(name, str(e))
     except Exception as e:  # noqa: BLE001
-        return back(name, f"Error: {e}") if name else (303, "", "text/html", f"/?msg={quote('Error: ' + str(e))}")
+        return back(name, f"Error: {e}") if name else (303, "", "text/html", f"/filings?msg={quote('Error: ' + str(e))}")
     return None

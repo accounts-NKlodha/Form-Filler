@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 
 import json, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mapping import HEADS, LINES, SIGN, G_DEF, L_BASE, resolve, line_of
+from mapping import HEADS, LINES, SIGN, G_DEF, L_BASE, resolve, line_of, std_ledger
 import present as P
 
 # usage: build_sch3.py <client_config.json> <tb_cy.csv> <tb_py.csv or -> <out.xlsx>
@@ -16,6 +16,8 @@ PYSRC = sys.argv[3] if sys.argv[3] != "-" else ""
 OUT = sys.argv[4]
 ROWS_CY = list(csv.DictReader(open(SRC, encoding="utf-8")))
 ROWS_PY = list(csv.DictReader(open(PYSRC, encoding="utf-8"))) if PYSRC else []
+for _r in ROWS_CY + ROWS_PY:  # Tally's P&L account under its standard name, however the company numbered it
+    _r["ledger_name"] = std_ledger(_r["ledger_name"], _r.get("primary_group") or _r.get("group_name"))
 TB_ROWS = max(len(ROWS_CY), len(ROWS_PY)) + 500
 
 F = "Arial"
@@ -415,7 +417,7 @@ if _sh.get("promoters"):
 r += 0
 end_note(); r += 1
 
-# Note: reserves and surplus (movement) - Parekh layout as signed FY 24-25 note 2
+# Note: reserves and surplus (movement) - Client name 2 layout as signed FY 24-25 note 2
 note_header("RS")
 def S(tb, col, codecol, code, extra=""):
     return f'SUMIFS({tb}!${col}$2:${col}$3001,{tb}!${codecol}$2:${codecol}$3001,"{code}"{extra})'

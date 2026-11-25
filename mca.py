@@ -103,7 +103,107 @@ def load_dump(slug):
     p = DUMPS / f"{slug}.json"
     if not p.exists():
         raise FileNotFoundError(f"no dump for {form_name(slug)} yet: open the form on MCA and press Alt+Shift+D")
-    return json.loads(p.read_text(encoding="utf-8"))
+    d = json.loads(p.read_text(encoding="utf-8"))
+    for f in d.get("fields") or []:  # the portal keeps a <style> block inside some labels: drop its CSS text
+        if isinstance(f.get("label"), str) and "{" in f["label"]:
+            f["label"] = clean_label(f["label"])
+    return d
+
+
+_CSS = re.compile(r"(?:[#.@][\w-]+(?:::?[\w-]+(?:\([^)]*\))?)*\s*(?:,\s*)?)+\{[^{}]*\}")
+
+
+def clean_label(label):
+    return re.sub(r"\s{2,}", " ", _CSS.sub(" ", label)).strip()
+
+
+GROUPS = {  # AOC-4 panels -> the heading staff know from the form
+    "generalinformationpanel": "Company and financial year", "generalouterpanel1": "Company and financial year",
+    "generalouterpanel2": "Company and financial year", "signatorydetailspanel": "Financial statements: board meeting and signatories",
+    "dynamictablesecondpanel": "Board's report: board meeting and signatories", "agmdetailspanel": "Auditor's report date and AGM",
+    "subsidiarydetailspanel": "Holding and subsidiary", "auditordetailspanel": "Auditor",
+    "generalinfopanel": "Type of industry and Schedule III", "generalinfopanel2": "Consolidation and books of account",
+    "generalinfopanel3": "Balance sheet", "detailsoflongtermtablepanel": "Long-term borrowings",
+    "detailsofshorttermtablepanel": "Short-term borrowings", "longtermloansandadvpanel": "Long-term loans and advances",
+    "longtermloansandadvdougpanel": "Long-term loans and advances: doubtful", "detailstradereceivablespanel": "Trade receivables",
+    "financialparameterspanel": "Financial parameters: balance sheet items", "sharecapitalraisedpanel": "Share capital raised during the year",
+    "detailsofsbnpanel": "Specified bank notes", "videtailsrelatedpanel": "Cost records and cost audit",
+    "profitandlosspanel": "Statement of profit and loss", "detailsofearningpanel": "Earnings in foreign exchange",
+    "detailsofexpenditurepanel": "Expenditure in foreign exchange", "profitandlossinner1": "Financial parameters: profit and loss items",
+    "detailsrelatedtoprinciplepanel": "Principal products or services",
+    "disclosureaboutrelatedpanel": "Related parties, auditor's remarks, CSR and secretarial audit",
+    "attachmentpanel": "Attachments and declaration", "attachmentanddeclarationsection": "Attachments and declaration",
+    "attachementsection1": "Attachments and declaration", "declarationunderrulepanel": "Attachments and declaration",
+    "forofficeuseonly": "Attachments and declaration", "languagesection": "Form language", "formlogoandtitle": "Form language",
+    "uploadverifydsc": "DSC upload", "formbasicdetails": "Form reference, filled by the portal",
+    "formlabelanddesciption": "Form language",
+    "companydetailsinformation": "Company details", "companynameaddressemailpanel": "Financial year",
+    "financialyearfromdatepanel": "Financial year", "condonationpanel": "Registered office and registration",
+    "registrationpanel": "Registered office and registration", "relavantformpanel": "Class of company",
+    "numberoftransferpanel": "Share capital and debentures", "securitiespanel": "Share capital and debentures",
+}
+_WRAP = re.compile(r"^(main|block\d*|panel\d+aoc4|fieldpanel|fieldspanel|companydetailsfields|chargesection|chargdetailsalpha|companydeclaration"
+                   r"|section|table|popup|breakuptablepanel|darkpanel\d*|.*inner.*|finalparameter|iifinancialparameterstable|csrapplicability)$")
+
+
+def group_of(f):
+    """Heading for the values list: the form's own section, in words. Never used by the rules (they read sectionText)."""
+    parts = [(re.sub(r"[^a-z0-9]", "", str(x).lower()), str(x)) for x in f.get("section") or []]
+    parts = [(k, x) for k, x in parts if k and (k in GROUPS or not _WRAP.match(k))]
+    for k, _ in reversed(parts):  # the deepest panel we have a name for
+        if k in GROUPS and not (k == "companydetailsinformation" and len(parts) > 1 and parts[-1][0] != k):
+            return GROUPS[k]
+    if parts:
+        k, x = parts[-1]
+        if k in GROUPS:
+            return GROUPS[k]
+        x = re.sub(r"(?<=[a-z])(?=[A-Z])|_", " ", x)
+        x = re.sub(r"\b(panel|section|fields?)\b|\d+$", " ", x, flags=re.I)
+        x = re.sub(r"\s+", " ", x).strip()
+        return (x[:1].upper() + x[1:].lower()) if x else "Other details"
+    return "Other details"
+
+
+AOC4_SEG = {"I": "Segment I: Balance sheet", "II": "Segment II: Profit and loss", "III": "Segment III: Related party transactions",
+            "IV": "Segment IV: Auditor's report", "V": "Segment V: Miscellaneous"}
+AOC4_PART = {  # panel -> (segment, part heading as printed on the form)
+    "generalinfopanel3": ("I", "I Balance sheet"), "detailsoflongtermtablepanel": ("I", "II Detailed balance sheet items: long-term borrowings"),
+    "detailsofshorttermtablepanel": ("I", "II Detailed balance sheet items: short-term borrowings"),
+    "longtermloansandadvpanel": ("I", "II Detailed balance sheet items: long-term loans and advances"),
+    "longtermloansandadvdougpanel": ("I", "II Detailed balance sheet items: long-term loans and advances, doubtful"),
+    "detailstradereceivablespanel": ("I", "II Detailed balance sheet items: trade receivables"),
+    "financialparameterspanel": ("I", "III Financial parameters: balance sheet items"),
+    "sharecapitalraisedpanel": ("I", "IV Share capital raised during the year"), "detailsofsbnpanel": ("I", "V Specified bank notes"),
+    "videtailsrelatedpanel": ("I", "VI Cost records and cost audit"),
+    "profitandlossinner1": ("II", "III Financial parameters: profit and loss items"),
+    "detailsofexpenditurepanel": ("II", "II-B Expenditure in foreign exchange"), "detailsofearningpanel": ("II", "II-A Earnings in foreign exchange"),
+    "profitandlosspanel": ("II", "I Statement of profit and loss"),
+    "detailsrelatedtoprinciplepanel": ("II", "IV Principal products or services"),
+}
+
+
+def aoc4_segment(f, state):
+    """(segment heading, part heading) for an AOC-4 field; state carries the position inside the last panel."""
+    keys = [re.sub(r"[^a-z0-9]", "", str(x).lower()) for x in f.get("section") or []]
+    for k in reversed(keys):
+        if k in AOC4_PART:
+            seg, part = AOC4_PART[k]
+            return AOC4_SEG[seg], part
+    name = f.get("name") or ""
+    if "disclosureaboutrelatedpanel" in keys:
+        if name.startswith("segmentIVradio"):
+            state["seg"] = "IV"
+        elif name.startswith("segmentVradio"):
+            state["seg"] = "V"
+        seg = state.setdefault("seg", "III")
+        part = {"III": "Related party transactions", "IV": "CSR applicability" if name.lower().startswith("csr") else "Auditor's report",
+                "V": "Secretarial audit"}[seg]
+        return AOC4_SEG[seg], part
+    if "panel1aoc4" in keys or "panel2aoc4" in keys:
+        return "General information", f.get("group") or ""
+    if "attachmentpanel" in keys:
+        return "Attachments and declaration", "Attachments and declaration"
+    return "", f.get("group") or ""
 
 
 def section_text(f):
@@ -146,12 +246,15 @@ def schema(slug):
     d = load_dump(slug)
     pre = prefix(slug)
     fields, tables, seen, n = [], {}, set(), 0
+    seg_state = {}
     for f in d["fields"]:
         if f["type"] not in INPUT_TYPES + ("file",) or not f.get("key") or f["key"] in seen or is_technical(f):
             continue
         seen.add(f["key"])
         n += 1
-        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f))
+        f = dict(f, code=f"{pre}-{n:03d}", sectionText=section_text(f), group=group_of(f), segment="")
+        if slug.startswith("aoc4"):
+            f["segment"], f["group"] = aoc4_segment(f, seg_state)
         rep = f.get("repeat")
         if rep and rep.get("groupSom") and f["type"] != "file":
             t = tables.setdefault(rep["groupKey"] or rep["title"], {
@@ -704,6 +807,9 @@ def convert(f, v):
     return {"value": str(v).strip()}
 
 
+OVERWRITE = {"Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "preference_shareClass"}
+
+
 def make_plan(xlsx, slug):
     xlsx = Path(xlsx)
     wb = openpyxl.load_workbook(xlsx, data_only=True)
@@ -721,11 +827,14 @@ def make_plan(xlsx, slug):
     mp = read_map(slug)
 
     def entry(f, v):
-        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+        e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
         e.update(convert(f, v))
         # Previous-year figures: the extension keeps whatever MCA pre-filled.
         if (mp.get(f["key"]) or {}).get("period") == "PY" or re.search(r"previous", f.get("som") or "", re.I):
             e["prev"] = True
+        # Boxes the portal opens with its own default (1 class) where the form's answer is ours (0): replace it.
+        if f.get("name") in OVERWRITE:
+            e["overwrite"] = True
         return e
 
     for name, kind, gkey in sheets:
@@ -739,7 +848,7 @@ def make_plan(xlsx, slug):
                 if not f or f["type"] == "file":
                     continue  # read-only fields are checked live on the portal, not here
                 if len(row) > 9 and row[9]:
-                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+                    e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
                     e.update(value="", copyFrom=row[9])
                     plan["fields"].append(e)
                     continue
@@ -778,7 +887,7 @@ def make_plan(xlsx, slug):
         for code, src in (("AOC4-079", "AOC4-012"),):
             if code not in have and src in have and code in by_code:
                 f = by_code[code]
-                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText")}
+                e = {k: f.get(k) for k in ("code", "key", "domBase", "som", "type", "label", "sectionText", "group", "segment")}
                 e.update(convert(f, have[src]["value"]))
                 plan["fields"].append(e)
     return plan
@@ -848,19 +957,15 @@ def dashboard(msg=""):
                          f"<input type=hidden name=slug value={esc(p.stem)}><button>Start capture again</button></form></td></tr>")
         except Exception:  # noqa: BLE001
             continue
-    return f"""<!doctype html><html><head><meta charset=utf-8><title>MCA filler</title><style>
-body{{font:14px Segoe UI,Arial,sans-serif;margin:24px;color:#102a43}} table{{border-collapse:collapse;margin:8px 0 24px}}
-td,th{{border:1px solid #bcccdc;padding:6px 10px;text-align:left;vertical-align:middle}} th{{background:#d9e2ec}}
-tr.active td{{background:#e3f9e5}} form{{display:inline}} button{{padding:4px 10px}} .msg{{background:#fff3c4;padding:8px 12px;white-space:pre-wrap}}
-</style></head><body><p><a href="/">&larr; Filing app</a></p><h2>MCA form filler: forms &amp; settings</h2>
-<p><a href="/adt1">ADT-1 for many companies &rarr;</a></p>
-{f'<div class=msg>{esc(msg)}</div>' if msg else ''}
-<p>Active inputs workbook (used by Alt+Shift+F): <b>{esc(active) or 'none'}</b></p>
-<h3>Clients</h3><p>One folder per client under <code>{esc(CLIENTS)}</code>, holding that client's Schedule III workbook.</p>
-<form method=post action=/newclient>New client folder: <input name=name size=40> <button>Create</button></form>
-<table><tr><th>Client</th><th>Schedule III workbook</th><th>MCA inputs</th><th></th></tr>{''.join(rows) or '<tr><td colspan=4>none yet</td></tr>'}</table>
-<h3>Captured forms</h3><table><tr><th>Form</th><th>Fields</th><th>Read via</th><th>Captured</th><th>Mapping</th><th>Pages captured</th><th></th></tr>{''.join(dumps) or '<tr><td colspan=7>none yet: open a form on MCA and press Alt+Shift+D</td></tr>'}</table>
-</body></html>"""
+    body = f"""<div class=head><div><div class=crumb>Set-up</div><h1>Captured forms</h1></div></div>
+<div class=card><div class=h>MCA forms the tool has learnt, page by page</div>
+<table><tr><th>Form</th><th class=n>Fields</th><th>Read via</th><th>Captured</th><th>Mapping</th><th>Pages captured</th><th></th></tr>{''.join(dumps) or '<tr><td colspan=7 class=mut>None yet: open a form on MCA and press Alt+Shift+D.</td></tr>'}</table></div>
+<div class=card><div class=h>Client folders and their inputs workbook</div>
+<p class=mut style="margin:0 0 12px">One folder per client under <code>{esc(CLIENTS)}</code>. Workbook used by Alt+Shift+F now: <b>{esc(active) or 'none'}</b>.</p>
+<form method=post action=/newclient class=row style="margin-bottom:12px"><label class=f>New client folder<input type=text name=name style="width:320px"></label><button class=sm>Create</button></form>
+<table><tr><th>Client</th><th>Schedule III workbook</th><th>MCA inputs</th><th></th></tr>{''.join(rows) or '<tr><td colspan=4 class=mut>None yet.</td></tr>'}</table></div>"""
+    import ff_ui
+    return ff_ui.shell("Captured forms", body, "/admin", msg)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -937,7 +1042,9 @@ class Handler(BaseHTTPRequestHandler):
             try:  # filing queue running: the job's plan, with the loop flags
                 qp = app._queue().plan(slug)
             except Exception as e:  # noqa: BLE001
-                return self._json(409, {"error": str(e)})
+                return self._json(409, {"error": str(e), "canSwitch": bool(getattr(e, "can_switch", False)),
+                                        "other": getattr(e, "other", ""), "slug": slug,
+                                        "sameClient": bool(getattr(e, "same_client", False))})
             if qp:
                 return self._json(200, qp)
             active = state().get("active")
@@ -997,6 +1104,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/log":
                 log = json.loads(self._body())
                 act = state().get("active")
+                who = re.sub(r"\s*\([^()]*\)\s*$", "", str(log.get("client") or ""))
+                try:
+                    cf = app.folder_of(who) if who else None
+                    if cf and cf.is_dir():
+                        act = str((cf / "x").relative_to(ROOT.resolve()))
+                except Exception:  # noqa: BLE001
+                    pass
                 folder = (ROOT / act).parent / "logs" if act else ROOT / "logs"
                 if str(log.get("slug", "")).startswith("adt"):
                     folder = ROOT / "ADT1" / "logs"
@@ -1049,7 +1163,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(open_browser=True, lan=False):
     sys.stdout.reconfigure(line_buffering=True)
     srv = ThreadingHTTPServer(("0.0.0.0" if lan else "127.0.0.1", PORT), Handler)
-    print(f"Form Filler on http://127.0.0.1:{PORT}" + (f"  (office LAN: http://<this PC's IP>:{PORT})" if lan else "") + "  (Ctrl+C to stop)")
+    print(f"Compliance Copilot on http://127.0.0.1:{PORT}" + (f"  (office LAN: http://<this PC's IP>:{PORT})" if lan else "") + "  (Ctrl+C to stop)")
     ff_jobs.recover()
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()

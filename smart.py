@@ -13,6 +13,9 @@ from datetime import date, datetime, timedelta
 from schedule3 import FSError
 
 # key, question, how to answer, default-maker(facts, fs) -> value
+# Raise this when a rule below changes what goes into the inputs workbook: open filings are then rebuilt by themselves.
+RULES_VERSION = 16
+
 QUESTIONS = [
     ("form_type", "Type of annual filing", "Original / Revised", lambda f, fs: "Original"),
     ("agm_held", "Was the AGM held for this financial year?", "Yes / No", lambda f, fs: "Yes"),
@@ -23,9 +26,20 @@ QUESTIONS = [
     ("all_attended", "Did every director attend every board meeting and the AGM?", "Yes / No", lambda f, fs: "Yes"),
     ("capital_changed", "Any change in share capital during the year (allotment, buy-back, transfer)?", "Yes / No", lambda f, fs: "No"),
     ("holders_changed", "Any change in shareholders or their shareholding during the year?", "Yes / No", lambda f, fs: "No"),
+    ("holders_all_indian", "Are all shareholders resident Indian individuals?", "Yes / No. Yes: all shares go under Individual, Indian. No: categories as on last year's form",
+     lambda f, fs: "Yes"),
     ("directors_changed", "Any change in directors / KMP during the year?", "Yes / No", lambda f, fs: "No"),
-    ("remuneration", "Remuneration to MD / WTD this year (Name = amount; …)", "e.g. A = 900000; B = 900000", lambda f, fs: _rem_default(f, fs)),
+    ("remuneration", "Directors' remuneration this year: Name = amount for each MD / WTD, or Nil", "e.g. A = 900000; B = 900000, or Nil", lambda f, fs: _rem_default(f, fs)),
     ("phone", "Telephone number of the company with STD code (portal needs it)", "e.g. 04412345678", lambda f, fs: None),
+    ("office_latitude", "Latitude of the registered office", "decimal degrees, e.g. 13.057837 (taken from last year's MGT-7A when it is there)",
+     lambda f, fs: ((f or {}).get("latitude") or [None])[0]),
+    ("office_longitude", "Longitude of the registered office", "decimal degrees, e.g. 80.261486 (taken from last year's MGT-7A when it is there)",
+     lambda f, fs: ((f or {}).get("longitude") or [None])[0]),
+    ("prev_agm_date", "Date of last year's AGM (the members' meeting held during this financial year)", "DD/MM/YYYY (from last year's MGT-7A when it is there)",
+     lambda f, fs: (f or {}).get("agm_date")),
+    ("other_securities", "Any preference shares, debentures or other securities outstanding at the year end?",
+     "Yes / No. No: number of classes is 0 on the form. Yes: staff enter those tables on the portal",
+     lambda f, fs: "Yes" if (f or {}).get("preference_classes") else "No"),
     ("penalties", "Any penalty, punishment or compounding during the year?", "Yes / No", lambda f, fs: "No"),
     ("resolution_date", "Date of board resolution authorising the signatory", "DD/MM/YYYY", lambda f, fs: None),
     ("signing_din", "DIN of the director who will sign (DSC)", "8 digits",
@@ -67,9 +81,9 @@ def _num(fs, expr, default=None):
 
 def _rem_default(facts, fs):
     rem = (facts or {}).get("remuneration") or []
-    if not rem:
-        return None
     total = _num(fs, "Notes:Employee benefits expense/Directors' remuneration")
+    if not rem:
+        return None if total else "Nil"  # an amount in the financial statements but no names: staff must answer
     last = sum(r["gross"] for r in rem) or 1
     parts = []
     for r in rem:
@@ -117,6 +131,8 @@ SETUP_ANSWERS = {
     "phone": "Telephone number with STD code",
     "board_meetings": "Board meeting dates",
     "designated_din": "DIN of designated person",
+    "adt1_srn": "SRN of Form ADT-1",
+    "n_auditors": "Number of auditors",
 }
 
 # Setup rows that stand in for last year's filed AOC-4 when it is not in the client folder.
@@ -289,6 +305,13 @@ def derive(facts, answers, fs):
     # Name, address, lat/long "as on FY end": same as the portal's own "as on filing date" values.
     # Name / address / lat-long "as on FY end" are kept by the portal itself: never touch them.
     d.set("TelephoneNumber", a.get("phone"), Q)
+    for key in ("latitude", "longitude"):  # registered office co-ordinates: staff answer first, else same as last year
+        ans = str(a.get("office_" + key) or "").strip()
+        pair = [ans, ans] if ans else (f.get(key) or [])
+        for n, v in zip((1, 2), pair):
+            d.set(f"{key}_details{n}", v, Q if ans else LY)
+        if not pair:
+            d.todo.append(f"{key.capitalize()} of the registered office: answer it on Inputs for the forms (not on last year's MGT-7A).")
     cls = f.get("class") or ""
     d.set("ClassOfCompany1", "One Person Company" if "one person" in cls.lower() else ("Private company" if cls else None), LY)
     d.set("CategoryCompany", f.get("category"), LY)
@@ -312,7 +335,7 @@ def derive(facts, answers, fs):
     eq = f.get("equity") or {}
     nominal = (eq.get("nominal") or [None])[0]
     auth_amt = _num(fs, "Notes:Share capital/Authorised share capital") or ((eq.get("amount") or [None])[0])
-    paid_amt = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or ((eq.get("amount") or [None, None, None, None])[3])
+    paid_amt = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or _num(fs, "BS:Share capital") or ((eq.get("amount") or [None, None, None, None])[3])
     changed = _yes(a.get("capital_changed"))
     if nominal and paid_amt is not None:
         d.set("NumberOfClassesEquity", str(eq.get("classes") or 1), LY)
@@ -325,7 +348,9 @@ def derive(facts, answers, fs):
             "nominalvalue_authorizedcapital": _i(nominal), "nominalvalue_issuedcapital": _i(nominal),
             "nominalvalue_subscribedcapital": _i(nominal), "nominalvalue_paidupcapital": _i(nominal),
             "tot_amt_subscribed_capital": _i(paid_amt), "tot_amt_paidupcapital": _i(paid_amt)}]
-    d.set("preference_shareClass", str(f.get("preference_classes") or 0), LY)
+    other_sec = _yes(a.get("other_securities"))
+    if not other_sec:
+        d.set("preference_shareClass", "0", Q)
     d.set("unclassified_shareAmt", "0", LY)
     ye = f.get("equity_year_end")
     if ye and not changed:
@@ -346,8 +371,11 @@ def derive(facts, answers, fs):
         d.set("ivNill", "Yes", LY)
     elif changed:
         d.todo.append("Share capital changed: enter the paid-up break-up (IV(d)) and transfers by hand.")
-    for n in ("Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "SecutiryOtherShareDebeunt"):
-        d.set(n, "0", LY)
+    if other_sec:
+        d.todo.append("Preference shares, debentures or other securities are outstanding: enter their number of classes and tables on the portal.")
+    else:
+        for n in ("Debenture3NoNConvertiNC", "partiallyConDebNumOfClasses", "fullyConDebNumOfClasses", "SecutiryOtherShareDebeunt"):
+            d.set(n, "0", Q)
 
     # ---- turnover / net worth
     t = _num(fs, "PL:Revenue from operations")
@@ -358,14 +386,21 @@ def derive(facts, answers, fs):
     # ---- shareholding pattern (carried forward unless holders changed)
     rows = [2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]  # portal row numbers for 1(i)..10 (the 2(...) group skips 5)
     hchanged = _yes(a.get("holders_changed"))
+    all_indian = not str(a.get("holders_all_indian") or "Yes").strip().lower().startswith("n")
     if not hchanged:
         for grp, key in (("a", "promoters"), ("b", "others")):
             pat = f.get(key) or []
             # PDF rows: 1(i),1(ii),1(iii),2(i),2(ii),2(iii),3..10 = 16 rows; portal has 14 data rows
             data = pat[:3] + pat[3:6] + pat[6:14] if len(pat) >= 14 else pat
+            if all_indian and data:
+                # Firm's rule: unless staff say otherwise, every shareholder is a resident Indian individual.
+                tot = [sum((v[0] or 0) for v in data), sum((v[2] or 0) for v in data)]
+                data = [[tot[0], 0, tot[1], 0]] + [[0, 0, 0, 0] for _ in data[1:]]
+            elif len(data) >= 14 and ((data[13][0] or 0) or (data[13][2] or 0)):
+                d.todo.append("Shareholding pattern, 10 Others: type the description of the holder on the portal.")
             for r, vals in zip(rows, data):
-                d.set(f"equity_no_share_{grp}_{r}", _i(vals[0]), LY)
-                d.set(f"pref_tot_no_share_{grp}_{r}", _i(vals[2]), LY)
+                d.set(f"equity_no_share_{grp}_{r}", _i(vals[0]), Q if all_indian else LY)
+                d.set(f"pref_tot_no_share_{grp}_{r}", _i(vals[2]), Q if all_indian else LY)
         d.set("tot_shareholers_vi_a", _i(f.get("n_promoters")), LY)
         d.set("Total_Other_Prometers", _i(f.get("n_others")), LY)
         g = f.get("gender") or {}
@@ -386,7 +421,10 @@ def derive(facts, answers, fs):
 
     # ---- meetings and attendance
     bm = _dates(a.get("board_meetings"))
-    d.set("meeting_held_IXA", "1" if held else "0", Q)
+    prev_agm = a.get("prev_agm_date") or f.get("agm_date")  # members' meeting held during this year = last year's AGM
+    d.set("meeting_held_IXA", "1" if prev_agm else "0", Q if a.get("prev_agm_date") else LY)
+    if not prev_agm:
+        d.todo.append("Members' meetings during the year: last year's AGM date not found; if one was held, enter the count and attach the Excel by hand.")
     if bm:
         d.set("meeting_held_IXB", str(len(bm)), Q)
     if held:
@@ -424,6 +462,17 @@ def derive(facts, answers, fs):
             "remuneration_managingdirector_name": n, "remuneration_managingdirector_designation": desig.get(n.lower(), "Whole-time director"),
             "remuneration_managingdirector_grosssalary": _i(v), "remuneration_managingdirector_commission": "0",
             "remuneration_managingdirector_stockoption": "0", "remuneration_managingdirector_others": "0"} for n, v in rem]
+    else:
+        fs_rem = _num(fs, "Notes:Employee benefits expense/Directors' remuneration")
+        said_nil = str(a.get("remuneration") or "").strip().lower() in ("nil", "none", "no", "0", "na", "n/a")
+        if fs_rem and not said_nil:
+            # The financial statements show directors' remuneration but nobody has said who drew it: a query, not a guess.
+            d.todo.append(f"Directors' remuneration of {_i(fs_rem)} is in the financial statements: answer the remuneration question "
+                          "(Name = amount) on Inputs for the forms, then the tool fills section IX.")
+        else:
+            # Nil keyed in the app, or nothing in the financial statements: tick the section's Nil box.
+            d.set("remunaration_checkbox", "Yes", Q if said_nil else FS)
+            d.set("number_managingdirector_remuneration", "0", Q if said_nil else FS)
     d.set("number_ceo_cfo_remuneration", "0", LY)
 
     # ---- compliance, penalties, declaration
@@ -459,7 +508,13 @@ QUESTIONS_AOC4 = [
      lambda f, fs: _d(f, "product_desc")),
     ("related_party", "Any transactions with related parties this year?", "Yes / No", lambda f, fs: _d(f, "related_party") or "No"),
     ("ca_cop", "Certificate of practice number of the certifying CA", "number", lambda f, fs: None),
+    ("ca_membership", "Membership number of the certifying professional (leave blank when the form is filed without "
+     "a practising professional's certificate, as for a small company)", "number", lambda f, fs: None),
     ("ca_fellow", "Certifying CA is Associate or Fellow?", "Associate / Fellow", lambda f, fs: None),
+    # The portal keeps every section after the auditor's details locked until these two are saved.
+    ("adt1_srn", "SRN of Form ADT-1 (the auditor's current appointment)", "SRN, as on the ADT-1 challan. Last year's is suggested: change it if the auditor was appointed again",
+     lambda f, fs: _d(f, "adt1_srn")),
+    ("n_auditors", "Number of auditors", "number", lambda f, fs: str(_d(f, "n_auditors")) if _d(f, "n_auditors") else "1"),
 ]
 
 
@@ -479,6 +534,10 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     if end:
         # Balance sheet header date: "Figures as at the end of (Current reporting period)"
         d.set("FiguresAtEndOfCurrentReporting", end.strftime("%d/%m/%Y"), FS)
+        # Previous period dates. Without them the portal empties every previous-year figure on Save.
+        prev_end = end.replace(year=end.year - 1)
+        d.set("figuresAsEndOfPreviousReporting", prev_end.strftime("%d/%m/%Y"), FS)
+        d.set("segIIPreviousFrom", (prev_end.replace(year=prev_end.year - 1) + timedelta(days=1)).strftime("%d/%m/%Y"), FS)
     # Gross PPE (financial parameter 44) = net PPE and intangibles + depreciation for the year (firm practice)
     gross = _setup_amount(fs, "Gross property plant and equipment") or         _num(fs, "BS:Property, plant and equipment + BS:Intangible assets + PL:Depreciation and amortization expense")
     try:
@@ -518,8 +577,22 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     d.set("whetherAnyExtension", "Yes" if _yes(a.get("agm_extension")) else "No", Q)
     d.set("WhetherCompanyIsSubsidiary", f.get("is_subsidiary") or "No", LY)
     d.set("whetherCompanyHasSubsidiary", f.get("has_subsidiary") or "No", LY)
-    cat = (f.get("auditor") or {}).get("category")
+    # The auditor block opens the rest of the form: the portal fills the auditor's details from the ADT-1 SRN.
+    srn = str(a.get("adt1_srn") or "").strip().upper()
+    d.set("SRNOfFormADT1", srn or f.get("adt1_srn"), Q if srn else LY)
+    n_aud = str(a.get("n_auditors") or "").strip().split(".")[0]
+    d.set("numberAuditors", n_aud or (str(f["n_auditors"]) if f.get("n_auditors") else None), Q if n_aud else LY)
+    if not (srn or f.get("adt1_srn")):
+        d.todo.append("Answer \"SRN of Form ADT-1\" on Inputs for the forms: the sections after the auditor's details stay locked "
+                      "on the portal until it is saved.")
+    # The auditor's details are a repeatable block (one per auditor): the portal fills PAN, name and address from
+    # the ADT-1; category and the signing member are typed. Same auditor as last year unless staff change it.
+    aud = f.get("auditor") or {}
+    cat = aud.get("category")
     d.set("categoryOfAuditor", cat, LY)
+    row = {"categoryOfAuditor": cat, "nameOfMember": aud.get("member_name"), "membershipNumber_Auditor": aud.get("member_no")}
+    if any(row.values()):
+        d.tables["auditors"] = [row]
     if f.get("industry"):
         d.set("InsuranceOrNBFC", f["industry"], LY)
     d.set("whetherSchedule3", f.get("sch3_applicable") or "Yes", LY)
@@ -538,20 +611,26 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
                                  "TurnoverOfTheRupees3": _i(rev) if (rev is not None and len(prods) == 1) else None,
                                  "DetailstableLAstcolumn": _i(rev) if (rev is not None and len(prods) == 1) else None}
                                 for p in prods]
+    elif not rev and (f or rev == 0):
+        # No revenue from operations and no product filed last year: the portal wants 0 here, with an empty table.
+        d.set("TotalNumberProductService123", "0", LY if f else FS)
     # EPS = profit for the year / equity shares; share capital raised = no change unless answered otherwise
     eq = (mgt7a_facts or {}).get("equity") or {}
     nominal = ((eq.get("nominal") or [None])[0]) or 10
-    paid = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up")
+    paid = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") or _num(fs, "BS:Share capital")
     paid_py = _num(fs, "Notes:Share capital/Total issued, subscribed and fully paid up") if False else None
     shares = _num(fs, "Setup:Weighted avg. equity shares - current year") or ((paid / nominal) if paid else None)
     shares_py = _num(fs, "Setup:Weighted avg. equity shares - previous year") or shares
     for per, shr, sfx in (("CY", shares, "Current"), ("PY", shares_py, "Previous")):
         prof = None
         if fs and shr:
-            try:
-                prof = fs.eval("PL:Profit / (loss) for the period (XI + XIV)", per)
-            except Exception:  # noqa: BLE001
-                prof = None
+            # The statement names this line differently when there are no discontinuing operations.
+            for line in ("PL:Profit / (loss) for the period (XI + XIV)", "PL:Profit for the year (V - VI)"):
+                try:
+                    prof = fs.eval(line, per)
+                    break
+                except Exception:  # noqa: BLE001
+                    prof = None
         if prof is not None and shr:
             eps = f"{prof / shr:.2f}"
             for n in (37, 38, 40, 41):
@@ -579,9 +658,13 @@ def derive_aoc4(facts, answers, fs, mgt7a_facts=None):
     d.set("dec_date", a.get("resolution_date"), Q)
     d.set("designation_dec", "Director", LY)
     d.set("dec_directorIdentification", a.get("signing_din") or f.get("signing_din"), Q)
-    d.set("categoryOfProfessional", "Chartered Accountant (in whole-time practice) or", LY)
-    d.set("whetherAssociateOrFellow", a.get("ca_fellow"), Q)
-    d.set("certificateOfPracticeNumber", a.get("ca_cop"), Q)
+    # Certificate by a practising professional: only when staff gave the membership number. Ticking the
+    # category alone makes the portal demand the number, and small companies file without this certificate.
+    if a.get("ca_membership"):
+        d.set("categoryOfProfessional", "Chartered Accountant (in whole-time practice) or", Q)
+        d.set("whetherAssociateOrFellow", a.get("ca_fellow"), Q)
+        d.set("membershipNumber", a.get("ca_membership"), Q)
+        d.set("certificateOfPracticeNumber", a.get("ca_cop"), Q)
     if _yes(a.get("related_party")):
         d.todo.append("Related party transactions: attach AOC-2 on the portal.")
     d.todo.append("Attach: financial statements with auditor's and board's report (PDF), and any optional attachments.")

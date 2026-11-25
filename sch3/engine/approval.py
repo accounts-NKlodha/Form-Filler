@@ -50,9 +50,10 @@ def analyse(cy_rows, py_rows, cfg):
         r = cy.get(name) or py[name]
         c_amt = cy[name]["closing_balance"] if name in cy else 0.0
         p_amt = py[name]["closing_balance"] if name in py else 0.0
-        if abs(c_amt) < 0.005 and abs(p_amt) < 0.005 and name.lower() != "profit & loss a/c":
-            continue
         g, prim = r["group_name"], r["primary_group"]
+        if abs(c_amt) < 0.005 and abs(p_amt) < 0.005 and name.lower() != "profit & loss a/c" \
+                and (name.lower() in lmap or group_code(g, prim, groups)[0]):
+            continue  # nil in both years; a nil ledger with no head at all is still shown, the workbook flags it
         amt = c_amt if abs(c_amt) >= 0.005 else p_amt
         base = resolve(name, g, prim, amt, list(L_BASE), list(G_DEF))
         base_nc = group_code(g, prim, list(G_DEF))[0]
@@ -64,7 +65,7 @@ def analyse(cy_rows, py_rows, cfg):
             note = next((l[3] for l in ledgers if l[0].lower() == name.lower()), "") or \
                 next((x[3] for x in groups if x[0].lower() in (g.lower(), prim.lower())), "")
             reason = note
-            if appr: reason = f"Approved by {appr.get('by','')} on {appr.get('on','')}" + (f" - {note}" if note else "")
+            if appr: reason = f"Approved by {appr.get('by','')} on {appr.get('on','')}" + (f" - {note}" if note and not note.startswith("Approved by") else "")
         else:
             s = suggest(name, g, prim)
             if s:

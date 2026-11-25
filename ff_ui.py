@@ -12,6 +12,7 @@ ADT-1 list, captured forms, local AI) stay reachable under "More".
 """
 import json
 import re
+import sys
 from datetime import datetime
 from html import escape
 from pathlib import Path
@@ -95,10 +96,10 @@ aside a.nv:hover{background:var(--side-on)}aside a.on{background:#fff;color:var(
 aside a.nv .k{width:20px;height:20px;border-radius:10px;border:1px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;opacity:.85}
 aside .gap{height:24px}
 aside .more{margin-top:auto;border-top:1px solid var(--side-line);padding:12px 12px 0;font-size:13px;line-height:18px}
-aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}
+aside .more a{color:var(--side-fg);display:block;padding:3px 0;text-decoration:none;opacity:.85}aside .more a:hover{opacity:1;text-decoration:underline}aside .more a.on{opacity:1;font-weight:600;color:#fff;background:none}
 aside .who{display:flex;flex-direction:column;gap:4px;padding:12px;border-top:1px solid var(--side-line);margin-top:12px;font-size:13px}
 aside .who input{height:32px;border-radius:6px;border:1px solid var(--side-line);background:var(--side-on);color:#fff;padding:0 8px;font:inherit}
-main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px;max-width:1500px}
+main{margin-left:240px;padding:32px 48px 48px;display:flex;flex-direction:column;gap:24px}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
 .crumb{font-size:13px;color:var(--mfg)}h1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.01em;margin:2px 0 0}
 .acts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
@@ -132,11 +133,46 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mf
 .chain b{display:block}.ledgers{margin:6px 0 0;padding:0;list-style:none;font-size:13px}.ledgers li{display:flex;justify-content:space-between;gap:12px;border-top:1px dashed var(--border);padding:3px 0}
 .pt{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding:10px 0}.pt:first-of-type{border-top:0}
 .pt.done{flex-direction:row;justify-content:space-between;align-items:flex-start;gap:12px}
+.ptsec{margin-top:16px}.ptsec:first-of-type{margin-top:4px}.ptt{font-weight:600;font-size:14px}.ptsec>summary{font-weight:600;font-size:14px;color:var(--fg)}
+.pth{display:flex;gap:8px;align-items:flex-start}.ptn{flex:none;width:22px;height:22px;border-radius:11px;border:1px solid var(--strong);font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.wait{background:var(--muted);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--mfg)}a.btn.sm{display:inline-flex;align-items:center;text-decoration:none}
 table.fixed{table-layout:fixed}table.fixed td{overflow-wrap:anywhere}
 .log{display:grid;grid-template-columns:64px 1fr;gap:12px;border-top:1px solid var(--border);padding:8px 0;font-size:13px}.log:first-of-type{border-top:0}
 details>summary{cursor:pointer;color:var(--primary);font-size:13px}
+tr.dl .car{display:inline-block;width:16px;color:var(--mfg);transition:transform .1s}tr.dl[aria-expanded=true] .car{transform:rotate(90deg)}
+tr.sub td{background:var(--surface);font-size:13px;padding:5px 8px}tr.sub td:first-child{padding-left:32px}
+.steps a{display:block}.steps>div.d b::after{content:" \\2713";color:var(--good)}
+.doc{display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:start;border-top:1px solid var(--border);padding:12px 8px}
+.doc.over{background:var(--muted);outline:2px dashed var(--strong)}.doc .fl{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px}
+.doc .side{display:flex;gap:8px;align-items:center;justify-content:flex-end}.pick{position:relative;overflow:hidden}
+.pick input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}.pick:focus-within{outline:2px solid var(--brass)}
+.sec{font-size:13px;font-weight:600;color:var(--mfg);margin:20px 0 0;padding:0 8px 8px}.sec:first-of-type{margin-top:4px}
+.pbar{height:6px;background:var(--muted);border-radius:3px;overflow:hidden;margin:8px 0 4px}.pbar>i{display:block;height:6px;background:var(--good)}
+@media (min-width:1101px) and (min-height:640px){main:has(>.fit){height:100vh;box-sizing:border-box;overflow:hidden;padding-bottom:24px}
+.fit{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}.fit>.card{overflow-y:auto;min-height:0;scrollbar-gutter:stable}
+.fit>.card th{position:sticky;top:-24px;background:var(--card);padding-top:8px;z-index:1}}
 .total td{font-weight:600}.hd td{font-weight:600;color:var(--mfg);background:var(--surface)}
 """
+
+def _legacy_css():
+    """Component styles the older screens still use (client details, Local AI), on this shell's colours and type scale."""
+    keep = (".phead", ".eyebrow", ".kpis", "@media (min-width:640px){.kpis", ".kpi", ".card h2", ".num{", ".num.done", ".step.done",
+            ".grid{", ".drop", ".clients", ".pill", "ol.how", ".bar", ".how4", ".guard", ".chead", ".prog", ".stepper", "label.muted",
+            "button.primary", "button.go")
+    rules = "\n".join(l for l in app.CSS.splitlines() if l.startswith(keep))
+    return (":root{--foreground:var(--fg);--background:var(--bg);--primary-foreground:var(--on-primary);--secondary:var(--muted);"
+            "--secondary-foreground:var(--fg);--muted-foreground:var(--mfg);--accent:var(--muted);--destructive:var(--bad);--success:var(--good);"
+            "--warning-foreground:var(--fg);--border-strong:var(--strong);--ring:var(--brass);--brass-foreground:var(--on-primary);"
+            "--shadow-xs:none;--shadow-panel:none;--shadow-raised:none;--ink:var(--fg);--line:var(--border);--go:var(--good)}\n" + rules + """
+.muted{color:var(--mfg);font-size:13px}.warn{color:var(--bad);font-weight:500}.sug{border-color:var(--info);color:var(--info)}.you{border-color:var(--good);color:var(--good)}
+.phead{border-bottom:0;padding-bottom:0;margin-bottom:0}.phead p{font-size:15px}.eyebrow{text-transform:none;letter-spacing:0;font-size:13px;font-weight:400}.eyebrow::before{display:none}
+.kpis{margin-bottom:0;gap:24px}.kpi{animation:none;box-shadow:none;padding:24px}.kpi .l,.prog .l,label.muted{text-transform:none;letter-spacing:0;font-size:13px;font-weight:500}
+.kpi .s,.pill,.chead .meta span,.chead .meta span.mono,.sidefoot{font-size:13px}.card h2{font-size:16px;margin:0 0 12px}
+.stepper{position:static;margin:0;box-shadow:none}.stepper .num,.num{font-size:13px}small{font-size:13px}.pill.on::before{animation:none}.drop{min-height:104px}
+button.primary,.btn.primary,button.go{background:var(--primary);border-color:var(--primary);color:var(--on-primary);height:40px}button.go::before{display:none}
+td button,td .btn{height:32px;font-size:13px;padding:0 12px}tr.active td{background:var(--muted)}code{font-size:13px}
+""")
+
 
 SCRIPT = """<script>
 (()=>{const k='ff_user';const box=document.getElementById('who');let v='';try{v=localStorage.getItem(k)||''}catch(e){}
@@ -146,11 +182,14 @@ for(const f of document.querySelectorAll('form'))f.addEventListener('submit',e=>
  let h=f.querySelector('input[name=user]');if(!h){h=document.createElement('input');h.type='hidden';h.name='user';f.appendChild(h)}h.value=u;
  const b=f.querySelector('button[data-busy]');if(b){b.disabled=true;b.textContent=b.dataset.busy}});
 for(const t of document.querySelectorAll('[data-all]'))t.addEventListener('change',()=>{for(const c of document.querySelectorAll('input[name='+t.dataset.all+']'))c.checked=t.checked});
-const r=document.body.dataset.refresh;if(r)setTimeout(()=>location.reload(),+r*1000);
+const r=document.body.dataset.refresh;let dirty=false;document.addEventListener('input',e=>{if(e.target.id!=='who')dirty=true});
+if(r){const tick=()=>{const a=document.activeElement;const busy=dirty||window.ffBusy||(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.id!=='who');
+ if(busy)setTimeout(tick,2000);else location.reload()};setTimeout(tick,+r*1000)}
 })();</script>"""
 
 NAV = [("/data", "1", "Get data"), ("/review", "2", "Review financials"), ("/file", "3", "File on MCA"),
-       None, ("/agents", "", "Agent queue"), ("/audit", "", "Audit trail")]
+       None, ("/agents", "", "Queues"), ("/audit", "", "Audit trail"), ("/partner", "", "Partner review")]
+MORE = [("/filings", "Client details"), ("/adt1", "ADT-1 companies"), ("/admin", "Captured forms"), ("/ai", "Local AI settings")]
 
 
 def shell(title, body, active="", msg="", refresh=0):
@@ -163,12 +202,12 @@ def shell(title, body, active="", msg="", refresh=0):
         nav.append(f"<a class=\"nv{' on' if href == active else ''}\" href=\"{href}\">"
                    f"{f'<span class=k>{k}</span>' if k else '<span class=k style=border:0></span>'}{name}</a>")
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>{esc(title)} · Form Filler</title>
+<title>{esc(title)} · Compliance Copilot</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<style>{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
-<aside><a class=brand href="/data">MCA automation<small>Form Filler · N K Lodha &amp; Co</small></a>
+<style>{_legacy_css()}{CSS}</style></head><body{f' data-refresh={refresh}' if refresh else ''}>
+<aside><a class=brand href="/data">Compliance Copilot<small>MCA automation · N K Lodha &amp; Co</small></a>
 {''.join(nav)}
-<div class=more><a href="/filings">Client details and questions</a><a href="/adt1">ADT-1 companies</a><a href="/admin">Captured forms</a><a href="/ai">Local AI</a></div>
+<div class=more>{''.join(f'<a href="{h}"{" class=on" if h == active else ""}>{t}</a>' for h, t in MORE)}</div>
 <label class=who for=who>Your name<input id=who type=text autocomplete=name placeholder="Recorded on approvals"></label></aside>
 <main>{f'<div class=msg role=status>{esc(msg)}</div>' if msg else ''}{body}</main>{SCRIPT}</body></html>"""
 
@@ -266,7 +305,7 @@ Tally needs F1 Help &gt; Settings &gt; Connectivity: Client/Server set to Both, 
             + add
             + """<script>fetch('/ff/api/tally').then(r=>r.json()).then(d=>{const t=document.getElementById('tally');
 t.textContent=d.error?('Tally not reachable: '+d.error):('Tally connected. Open: '+((d.companies||[]).map(c=>c.name).join(', ')||'no company'));
-const dl=document.getElementById('tallyco');for(const c of d.companies||[]){const o=document.createElement('option');o.value=c.name;dl.appendChild(o)}}).catch(()=>{});
+const dl=document.getElementById('tallyco');for(const c of d.companies||[]){const o=document.createElement('option');o.value=c.name;dl.appendChild(o)}const ns=(d.companies||[]).map(c=>c.name);if(ns.length)for(const i of document.querySelectorAll('input[list=tallyco]')){const s=document.createElement('select');s.name=i.name;const vs=ns.slice();if(i.value&&!vs.includes(i.value))vs.unshift(i.value);if(!i.value)vs.unshift('');for(const v of vs){const o=document.createElement('option');o.value=v;o.textContent=v?(ns.includes(v)?v:v+' (not open in Tally)'):'Pick a company open in Tally';if(v===i.value)o.selected=true;s.appendChild(o)}i.replaceWith(s)}}).catch(()=>{});
 for(const f of document.querySelectorAll('form[data-tb]'))f.addEventListener('submit',async e=>{e.preventDefault();const fi=f.querySelector('input[type=file]').files[0];
 if(!fi)return;const r=await fetch(f.action+'&which='+f.which.value+'&name='+encodeURIComponent(fi.name),{method:'POST',body:fi});const d=await r.json();
 location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error):('Read '+d.ledgers+' ledgers from '+fi.name+'. Click Get data for selected to build.'))});</script>""")
@@ -275,11 +314,33 @@ location.href='/data?msg='+encodeURIComponent(d.error?('Upload failed: '+d.error
 
 # ---------------------------------------------------------------- 2 Review financials
 
-TABS = [("bs", "Balance sheet"), ("pl", "Profit and loss"), ("notes", "Notes to accounts"), ("mapping", "Mapping"),
-        ("questions", "Questions for the forms"), ("docs", "Documents"), ("reports", "Reports and meetings")]
+# In the order the work is done: last year's papers in, the form inputs answered, then the figures reviewed.
+TABS = [("docs", "Documents"), ("questions", "Inputs for the forms"), ("mapping", "Mapping"), ("bs", "Balance sheet"),
+        ("pl", "Profit and loss"), ("notes", "Notes to accounts"), ("reports", "Reports and meetings"), ("preview", "Form preview")]
 
 
-def page_review(name="", tab="bs", msg=""):
+def _flow(folder, q, pts, v):
+    """The five stages for one client, each linked to where it is done."""
+    cy, py = ff_fin.tb_info(folder, "tb_cy"), ff_fin.tb_info(folder, "tb_py")
+    miss = len(ff_docs.missing(folder))
+    need = len([r for r in ff_docs.checklist(folder) if r["need"] == "must"])
+    open_q = app.steps(folder)["open_q"] if app.inputs_path(folder).exists() else None
+    open_n = sum(1 for p in pts if not p["passed"] and not p["cleared"] and p["kind"] not in ("questions",))
+    st = [("Tally data", f"{cy['ledgers']} ledgers" + (", both years" if py else ", this year only") if cy else "Not read yet",
+           bool(cy), "/data"),
+          ("Last year's filings", f"{need - miss} of {need} needed documents in" if need else "None needed", not miss,
+           f"/review?c={q}&tab=docs"),
+          ("Inputs for the forms", "Not prepared yet" if open_q is None else f"{len(open_q)} still to answer" if open_q else "All answered",
+           open_q == [], f"/review?c={q}&tab=questions"),
+          ("Review the figures", f"{open_n} review point{'s' if open_n != 1 else ''} open" if open_n else "No open points",
+           bool(cy) and not open_n, f"/review?c={q}&tab=bs"),
+          ("Tick", f"Verified by {v['by']}" if v else "Verified, okay to file", bool(v), f"/review?c={q}&tab=bs")]
+    return "<div class=steps>" + "".join(
+        f"<div class=\"{'d' if done else ''}\"><a href=\"{href}\" style=\"text-decoration:none;color:inherit\"><b>{i}. {esc(t)}</b>"
+        f"<span class=mut>{esc(sub)}</span></a></div>" for i, (t, sub, done, href) in enumerate(st, 1)) + "</div>"
+
+
+def page_review(name="", tab="", msg=""):
     cl = clients()
     if not cl:
         return shell("Review financials", head("Step 2 of 3", "Review financials") + "<div class=card>No clients yet.</div>", "/review", msg)
@@ -291,6 +352,9 @@ def page_review(name="", tab="bs", msg=""):
     q = quote(name)
     v = ff_fin.verified(folder)
     pts = ff_fin.review_points(folder)
+    if tab not in dict(TABS):  # open on the first stage that still needs work
+        tab = ("docs" if ff_docs.missing(folder) else
+               "questions" if any(p["kind"] == "questions" and not p["passed"] for p in pts) else "bs")
     open_n = sum(1 for p in pts if not p["passed"] and not p["cleared"])
     i = names.index(name)
     pick = ("<form method=get action=/review class=row><input type=hidden name=tab value=\"" + esc(tab) + "\">"
@@ -303,38 +367,96 @@ def page_review(name="", tab="bs", msg=""):
                 f"<button class=sm>Remove tick</button></form>")
     else:
         tick = (f"<form method=post action=/ff/verify data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
-                f"<button class=p {'disabled' if open_n or not fs else ''} title=\"{'Clear every review point first' if open_n else ''}\">Verified, okay to file</button></form>")
+                f"<button class=p {'disabled' if open_n or not fs or ff_fin.building(folder) else ''} title=\"{'Clear every review point first' if open_n else ''}\">Verified, okay to file</button></form>")
     acts = pick + (f"<a class=btn href=\"/ff/workbook?c={q}\">Open in Excel</a>" if fs else "") + tick
     nmiss = len(ff_docs.missing(folder))
     tlabel = lambda k, t: f"{t} ({nmiss} missing)" if k == "docs" and nmiss else t
     tabs = "<nav class=tabs>" + "".join(f"<a href=\"/review?c={q}&tab={k}\" class=\"{'on' if k == tab else ''}\">{tlabel(k, t)}</a>" for k, t in TABS) + "</nav>"
     left = _review_tab(folder, tab)
-    pts_html = []
+    # Review points in the order they should be worked: what changes the figures first, then what is read and confirmed.
+    busy = ff_fin.building(folder)
+    map_open = any(p["kind"] == "mapping" and not p["passed"] for p in pts)
+    fix, read, done_ = [], [], []
     for p in pts:
-        if p["passed"]:
-            right = tag("Passed", "good")
-        elif p["cleared"]:
-            right = tag(f"Cleared by {p['cleared']['by']}", "good")
-        elif p["kind"] == "questions":
-            right = f"<a href=\"/review?c={q}&tab=questions\">{tag('Answer', 'need')}</a>"
-        elif p["kind"] == "mapping":
-            right = f"<a href=\"/review?c={q}&tab=mapping\">{tag('Confirm', 'need')}</a>"
-        elif p["kind"] == "block":
-            right = f"<a href=\"/data\">{tag('Get data', 'need')}</a>"
-        else:
-            right = (f"<form method=post action=/ff/point/clear data-who=need class=row style=\"gap:6px\"><input type=hidden name=c value=\"{esc(name)}\">"
-                     f"<input type=hidden name=id value=\"{esc(p['id'])}\"><input type=text name=note placeholder=\"Note on how it was cleared (optional)\" style=\"flex:1;height:32px\" aria-label=Note>"
-                     f"<button class=sm>Clear</button></form>")
         det = f"<div class=mut>{esc(p['detail'])}</div>" if p["detail"] else ""
-        cn = f"<div class=mut>Note: {esc(p['cleared']['note'])}</div>" if p["cleared"] and p["cleared"].get("note") else ""
-        done = p["passed"] or p["cleared"] or p["kind"] in ("questions", "mapping", "block")
-        pts_html.append(f"<div class=\"pt{' done' if done else ''}\"><div>{esc(p['text'])}{det}{cn}</div><div>{right}</div></div>")
+        if p["passed"] or p["cleared"]:
+            who = f"Cleared by {esc(p['cleared']['by'])}" + (f": {esc(p['cleared']['note'])}" if p["cleared"].get("note") else "") if p["cleared"] else "Passed"
+            done_.append(f"<div class=\"pt done\"><div>{esc(p['text'])}<div class=mut>{who}</div></div><div>{tag('Cleared' if p['cleared'] else 'Passed', 'good')}</div></div>")
+            continue
+        figure = p["id"] in ff_fin.FIGURE_CHECKS
+        clear = lambda label, ph, req: (
+            f"<form method=post action=\"/ff/point/clear?tab={tab}\" data-who=need class=row style=\"gap:6px\"><input type=hidden name=c value=\"{esc(name)}\">"
+            f"<input type=hidden name=id value=\"{esc(p['id'])}\"><input type=text name=note placeholder=\"{ph}\" {'required' if req else ''} "
+            f"style=\"flex:1;height:32px\" aria-label=\"{ph}\"><button class=sm>{label}</button></form>")
+        if p["kind"] == "questions":
+            act, where = f"<a class=\"btn sm\" href=\"/review?c={q}&tab=questions\">Open inputs for the forms</a>", fix
+        elif p["kind"] == "mapping":
+            act, where = (f"<a class=\"btn sm\" href=\"/review?c={q}&tab=mapping\">Open mapping and "
+                          f"{'pick a head' if p['id'].startswith('chk:') else 'confirm'}</a>"), fix
+        elif p["kind"] == "setup":
+            act = (f"<div class=row style=\"gap:6px;flex-wrap:wrap\"><form method=post action=\"/ff/setup?tab={tab}\" data-who=need class=row style=\"gap:6px\">"
+                   f"<input type=hidden name=c value=\"{esc(name)}\"><input type=text name=value placeholder=\"Face value, Rs\" style=\"width:130px;height:32px\" aria-label=\"Face value per share\">"
+                   f"<button class=sm>Change and rebuild</button></form>"
+                   f"<form method=post action=\"/ff/point/clear?tab={tab}\" data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
+                   f"<input type=hidden name=id value=\"{esc(p['id'])}\"><button class=sm>Rs 10 is right</button></form></div>")
+            where = fix
+        elif p["kind"] == "block":
+            act, where = "<a class=\"btn sm\" href=\"/data\">Go to Get data</a>", fix
+        elif figure and map_open and p["id"] in ("chk:reserves", "chk:cashflow", "chk:bs", "chk:profit"):
+            act = "<div class=wait>Nothing to do here yet. This should go away by itself once the mapping point is confirmed and the figures are rebuilt.</div>"
+            where = fix
+        elif figure:
+            act, where = clear("Clear with reason", "Reason it is right as it stands (required)", True), fix
+        else:
+            act, where = clear("Clear", "Note on what you checked (optional)", False), read
+        where.append((p, det, act))
+    # the cause before its effects: mapping and missing data first, then the checks that follow from them
+    rank = lambda x: (0 if x[0]["kind"] in ("block", "mapping") else 1 if x[0]["kind"] == "setup" else 3 if x[0]["kind"] == "questions" else 2)
+    fix.sort(key=rank)
+
+    def _sec(title, hint, items, start):
+        if not items:
+            return ""
+        rows_ = "".join(f"<div class=pt><div class=pth><span class=ptn>{start + k}</span><b>{esc(p['text'])}</b></div>{det}<div>{act}</div></div>"
+                        for k, (p, det, act) in enumerate(items))
+        return f"<div class=ptsec><div class=ptt>{title} <span class=mut>({len(items)})</span></div><div class=mut>{hint}</div>{rows_}</div>"
+    pts_html = [
+        ("<div class=wait style=\"margin-bottom:12px\"><b>The figures are being rebuilt.</b> These points will refresh when it finishes; the tick is off until then.</div>" if busy else ""),
+        _sec("Fix first", "These change the figures or the forms. Work from the top: a later point often clears itself once an earlier one is fixed.", fix, 1),
+        _sec("Read and confirm", "The figures agree, but the agent wants a person to look. Check, then clear.", read, len(fix) + 1),
+        (f"<details class=ptsec><summary>Done ({len(done_)})</summary>{''.join(done_)}</details>" if done_ else ""),
+    ]
+    if not fix and not read:
+        pts_html.insert(0, "<p><b>Nothing left to review.</b> You can tick \"Verified, okay to file\".</p>")
+    n_fix, n_read = len(fix), len(read)
     fyl = fy_label(folder)
-    body = (head(f"Step 2 of 3 · {esc(name)} · {fyl} · client {i + 1} of {len(names)}", "Review financials", acts) + tabs
-            + f"""<div class=g12><div class="card s7">{left}</div>
-<div class="card s5"><div class=h>Review points from the agent. All must be cleared before the tick.</div>{''.join(pts_html)}
+    body = (head(f"Step 2 of 3 · {esc(name)} · {fyl} · client {i + 1} of {len(names)}", "Review financials", acts)
+            + _flow(folder, q, pts, v) + tabs
+            + f"""<div class="g12 fit"><div class="card s7">{left}</div>
+<div class="card s5"><div class=h>Review points <span class=mut style="font-weight:400">· {n_fix} to fix · {n_read} to confirm · {len(done_)} done</span></div>{''.join(pts_html)}
 <p class=mut style="margin:16px 0 0">The tick is recorded with your name and the time. Only ticked clients go to step 3. Getting data or building again removes the tick.</p></div></div>""")
-    return shell(f"Review: {name}", body, "/review", msg)
+    live, note = _agent_note(name)
+    if note:
+        body = note + body
+    return shell(f"Review: {name}", body, "/review", msg, refresh=5 if live else 0)
+
+
+def _agent_note(name):
+    """(agent still working, banner) for the client's newest job: progress while it runs, the reason when it stopped."""
+    jobs = [j for j in ff_jobs.load()["jobs"] if j["client"] == name]
+    if not jobs:
+        return False, ""
+    j = max(jobs, key=lambda x: x["id"])
+    what = {"get_data": "Getting data from Tally", "build": "Building the financials", "docs": "Drafting the documents"}.get(j["kind"], "Working")
+    if j["status"] in ("working", "queued"):
+        now = j.get("now") or ""
+        return True, (f"<div class=msg role=status><b>{what}.</b> {esc(now)}. This page refreshes by itself; the figures below are "
+                      f"from the last build until it finishes. <a href=/agents>Agent queue</a></div>")
+    if j["status"] == "failed":
+        return False, f"<div class=msg role=alert><b>{what} failed.</b> {esc(j.get('now') or '')} <a href=/agents>Open the agent queue to retry</a></div>"
+    if j["status"] == "staff" and "review point" not in (j.get("now") or ""):
+        return False, f"<div class=msg role=alert><b>The agent needs you.</b> {esc(j.get('now') or '')}. <a href=/agents>Open the agent queue</a></div>"
+    return False, ""
 
 
 def _change(cy, py):
@@ -346,34 +468,67 @@ def _change(cy, py):
 
 def _docs_tab(folder):
     name = folder.name
-    rows = []
-    for r in ff_docs.checklist(folder):
+    rows = ff_docs.checklist(folder)
+    must = [r for r in rows if r["need"] == "must"]
+    got = sum(1 for r in must if r["files"])
+
+    def one(r):
         if r["files"]:
             st = tag("Uploaded", "good")
         elif r["need"] == "must":
-            st = tag("Missing, needed", "need")
+            st = tag("Needed", "need")
         else:
-            st = tag("Not uploaded", "")
+            st = ""
         files = "".join(
-            f"<div class=row style=\"gap:8px;margin-top:4px\"><span>{esc(f.name)}</span><span class=mut>{ff_docs.stamp(f)}</span>"
+            f"<div class=fl><span>{esc(f.name)}</span><span class=mut>{ff_docs.stamp(f)}</span>"
             f"<form method=post action=/ff/doc/remove style=\"display:inline\"><input type=hidden name=c value=\"{esc(name)}\">"
             f"<input type=hidden name=kind value=\"{r['kind']}\"><input type=hidden name=file value=\"{esc(f.name)}\">"
             f"<button class=link>Remove</button></form></div>" for f in r["files"])
-        btn = ("Add files" if r["multi"] and r["files"] else "Replace" if r["files"] else "Upload")
-        up = (f"<form class=\"row docup\" style=\"gap:6px;margin-top:6px\" data-c=\"{esc(name)}\" data-k=\"{r['kind']}\">"
-              f"<input type=file accept=\"{r['accept']}\" {'multiple' if r['multi'] else ''} aria-label=\"{esc(r['title'])}\">"
-              f"<button class=sm>{btn}</button></form>")
-        rows.append(f"<tr><td><b>{esc(r['title'])}</b><div class=mut>{esc(r['why'])}</div>{files}{up}</td><td style=\"width:160px\">{st}</td></tr>")
-    js = """<script>for(const f of document.querySelectorAll('form.docup'))f.addEventListener('submit',async e=>{e.preventDefault();
-const fs=[...f.querySelector('input[type=file]').files];if(!fs.length)return;const b=f.querySelector('button');b.disabled=true;
-let who='';try{who=encodeURIComponent((localStorage.getItem('ff_user')||'').trim())}catch(e){}let msg=[];
-for(const fi of fs){b.textContent='Uploading '+fi.name;const r=await fetch('/ff/doc/upload?c='+encodeURIComponent(f.dataset.c)+'&kind='+f.dataset.k+'&name='+encodeURIComponent(fi.name)+'&user='+who,{method:'POST',body:fi});
-const d=await r.json();msg.push(d.error?('Not saved '+fi.name+': '+d.error):('Saved '+d.saved))}
-location.href=location.pathname+'?c='+encodeURIComponent(f.dataset.c)+'&tab=docs&msg='+encodeURIComponent(msg.join('. '))})</script>"""
-    return (f"<div class=h>Documents for {esc(name)}. Each upload goes to the right place in the client folder and is noted in the audit trail.</div>"
-            f"<table>{''.join(rows)}</table>"
-            f"<p class=mut style=\"margin:12px 0 0\">Replaced or removed files are kept in the client's _replaced folder. "
-            f"After adding PDFs, run Suggest answers with local AI again so it reads them.</p>{js}")
+        btn = ("Add files" if r["multi"] and r["files"] else "Replace" if r["files"] else "Choose files" if r["multi"] else "Choose file")
+        return (f"<div class=doc data-c=\"{esc(name)}\" data-k=\"{r['kind']}\"><div><b>{esc(r['title'])}</b>"
+                f"<div class=mut>{esc(r['why'])}</div>{files}<div class=\"mut note\" role=status></div></div>"
+                f"<div class=side>{st}<label class=\"btn sm pick\">{btn}<input type=file accept=\"{r['accept']}\" "
+                f"{'multiple' if r['multi'] else ''} aria-label=\"{esc(r['title'])}\"></label></div></div>")
+    need_html = "".join(one(r) for r in must)
+    more_html = "".join(one(r) for r in rows if r["need"] != "must")
+    pct = int(100 * got / len(must)) if must else 100
+    js = """<script>(()=>{let busy=0,msgs=[];const c=document.querySelector('.doc')?.dataset.c||'';
+const done=()=>{if(busy)return;location.href=location.pathname+'?c='+encodeURIComponent(c)+'&tab=docs&msg='+encodeURIComponent(msgs.join('. '))};
+async function send(d,files){if(!files.length)return;const note=d.querySelector('.note');let who='';
+try{who=encodeURIComponent((localStorage.getItem('ff_user')||'').trim())}catch(e){}
+busy++;window.ffBusy=true;for(const fi of files){note.textContent='Uploading '+fi.name+' ...';
+try{const r=await fetch('/ff/doc/upload?c='+encodeURIComponent(d.dataset.c)+'&kind='+d.dataset.k+'&name='+encodeURIComponent(fi.name)+'&user='+who,{method:'POST',body:fi});
+const j=await r.json();msgs.push(j.error?('Not saved '+fi.name+': '+j.error):('Saved '+j.saved));note.textContent=j.error?('Not saved: '+j.error):('Saved '+j.saved)}
+catch(e){msgs.push('Not saved '+fi.name+': the server did not answer');note.textContent='Not saved: the server did not answer'}}
+busy--;window.ffBusy=busy>0;done()}
+for(const d of document.querySelectorAll('.doc')){const inp=d.querySelector('input[type=file]');
+inp.addEventListener('change',()=>send(d,[...inp.files]));
+d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over')});d.addEventListener('dragleave',()=>d.classList.remove('over'));
+d.addEventListener('drop',e=>{e.preventDefault();d.classList.remove('over');const f=[...e.dataTransfer.files];send(d,inp.multiple?f:f.slice(0,1))})}})()</script>"""
+    ai_on = False
+    try:
+        import ai
+        ai_on = bool(ai.settings().get("enabled"))
+    except Exception:  # noqa: BLE001
+        pass
+    nxt = (f"<form method=post action=/ai/run class=row style=\"margin-top:20px;align-items:center\"><input type=hidden name=c value=\"{esc(name)}\">"
+           f"<button class=sm {'' if ai_on else 'disabled'}>Read the documents with local AI and suggest the inputs</button>"
+           f"<span class=mut>{'Next step once the documents are in. Nothing is saved until you accept the answers.' if ai_on else 'Local AI is off: turn it on under Local AI.'}</span></form>")
+    return (f"<div class=h>{got} of {len(must)} needed documents are in for {esc(name)}</div>"
+            f"<div class=pbar><i style=\"width:{pct}%\"></i></div>"
+            f"<p class=mut style=\"margin:0 0 4px\">Choose a file, or drop it on its row: it uploads straight away, so you can go down the list "
+            f"without pressing anything else. Each file goes to the right place in the client folder and is noted in the audit trail.</p>"
+            + (f"<div class=sec>Needed before filing</div>{need_html}" if need_html else "")
+            + f"<div class=sec>Helpful: the agent and the local AI read these</div>{more_html}{nxt}"
+            f"<p class=mut style=\"margin:16px 0 0\">Replaced or removed files are kept in the client's _replaced folder.</p>{js}")
+
+
+def _stale(folder, text, how, ans):
+    try:
+        import ai
+        return ai.stale_dates(folder, text, how, ans)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _review_tab(folder, tab):
@@ -386,24 +541,58 @@ def _review_tab(folder, tab):
         if not st:
             return "<div class=h>No Schedule III workbook yet</div><p>Go to <a href=/data>Get data</a> and get this client's data from Tally.</p>"
         if tab == "notes":
-            items = "".join(f"<tr><td class=n style=\"width:40px\">{n['no']}</td><td>{esc(n['title'])}</td></tr>" for n in st["notes"])
-            return (f"<div class=h>Notes to accounts in {esc(st['file'])}</div><table>{items}</table>"
-                    f"<p class=mut>Open the workbook to read each note in full.</p>")
+            nd = ff_fin.note_drill(folder)
+            items = []
+            for n in st["notes"]:
+                d = nd.get(n["no"])
+                if not d:
+                    items.append(f"<tr><td class=n style=\"width:40px\">{n['no']}</td><td>{esc(n['title'])} <span class=mut>no ledgers in this note</span></td><td></td><td></td></tr>")
+                    continue
+                nl = sum(len(h["ledgers"]) for h in d["heads"])
+                items.append(f"<tr class=\"click dl\" tabindex=0 role=button aria-expanded=false title=\"Show the heads and Tally ledgers in this note\">"
+                             f"<td class=n style=\"width:40px\">{n['no']}</td><td><span class=car aria-hidden=true>&#9656;</span>{esc(n['title'])} "
+                             f"<span class=mut>{nl} ledger{'s' if nl != 1 else ''}</span></td>"
+                             f"<td class=n>{money(d['cy'])}</td><td class=n>{money(d['py'])}</td></tr>")
+                for h in d["heads"]:
+                    items.append(f"<tr class=sub hidden><td></td><td><b>{esc(h['head'])}</b></td><td class=n><b>{money(h['cy'])}</b></td><td class=n><b>{money(h['py'])}</b></td></tr>")
+                    items.append("".join(f"<tr class=sub hidden><td></td><td style=\"padding-left:28px\">{esc(x['ledger'])} <span class=mut>{esc(x['group'])}</span></td>"
+                                         f"<td class=n>{money(x['cy'])}</td><td class=n>{money(x['py'])}</td></tr>" for x in h["ledgers"]))
+            js = """<script>for(const t of document.querySelectorAll('tr.dl')){const go=()=>{const o=t.getAttribute('aria-expanded')!=='true';
+t.setAttribute('aria-expanded',o);for(let n=t.nextElementSibling;n&&n.classList.contains('sub');n=n.nextElementSibling)n.hidden=!o};
+t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})}</script>""" if nd else ""
+            return (f"<div class=h>Notes to accounts in {esc(st['file'])}</div>"
+                    f"<table><tr><th></th><th>Note</th><th class=n>This year</th><th class=n>Last year</th></tr>{''.join(items)}</table>{js}"
+                    f"<p class=mut>Click a note to see its heads and the Tally ledgers in each. Text notes (policies, ratios, disclosures) and notes with nil balances have no ledgers: read them in the workbook.</p>")
         rows = []
-        for r in st["BS" if tab == "bs" else "PL"]:
+        sheet = "BS" if tab == "bs" else "PL"
+        dr = ff_fin.drill(folder)
+        for r in st[sheet]:
             lab = r["label"]
             if r["cy"] is None and r["py"] is None:
                 rows.append(f"<tr class=hd><td colspan=4>{esc(lab)}</td></tr>")
                 continue
             total = lab.upper().startswith("TOTAL") or re.match(r"^[IVX]+\.", lab)
             note = f" <span class=mut>note {esc(r['note'])}</span>" if r["note"] else ""
+            led = dr.get((sheet, r["row"]))
+            if led and not total:
+                rows.append(f"<tr class=\"click dl\" tabindex=0 role=button aria-expanded=false title=\"Show the Tally ledgers in this line\">"
+                            f"<td><span class=car aria-hidden=true>&#9656;</span>{esc(lab)}{note} <span class=mut>{len(led)} ledger{'s' if len(led) != 1 else ''}</span></td>"
+                            f"<td class=n>{money(r['cy'])}</td><td class=n>{money(r['py'])}</td><td class=n>{_change(r['cy'], r['py'])}</td></tr>")
+                sub = "".join(f"<tr class=sub hidden><td>{esc(x['ledger'])} <span class=mut>{esc(x['group'])}</span></td>"
+                              f"<td class=n>{money(x['cy'])}</td><td class=n>{money(x['py'])}</td><td class=n>{_change(x['cy'], x['py'])}</td></tr>" for x in led)
+                rows.append(sub)
+                continue
             rows.append(f"<tr class=\"{'total' if total else ''}\"><td>{esc(lab)}{note}</td>"
                         f"<td class=n>{money(r['cy'])}</td><td class=n>{money(r['py'])}</td><td class=n>{_change(r['cy'], r['py'])}</td></tr>")
+        if dr:
+            rows.append("""<script>for(const t of document.querySelectorAll('tr.dl')){const go=()=>{const o=t.getAttribute('aria-expanded')!=='true';
+t.setAttribute('aria-expanded',o);for(let n=t.nextElementSibling;n&&n.classList.contains('sub');n=n.nextElementSibling)n.hidden=!o};
+t.addEventListener('click',go);t.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})}</script>""")
         div = st["divisor"]
         unit = f" Figures shown in rupees (the workbook is in Rs/{div:g})." if div != 1 else ""
         return (f"<div class=h>Financials as per Schedule III, this year against last year</div>"
                 f"<table><tr><th>{'Balance sheet' if tab == 'bs' else 'Profit and loss'}</th><th class=n>This year</th><th class=n>Last year</th><th class=n>Change</th></tr>{''.join(rows)}</table>"
-                f"<p class=mut style=\"margin:12px 0 0\">Last year's column is checked against last year's filed AOC-4 (see review points).{unit} From {esc(st['file'])}.</p>")
+                f"<p class=mut style=\"margin:12px 0 0\">{'Click a line to see the Tally ledgers in it. ' if dr else ''}Last year's column is checked against last year's filed AOC-4 (see review points).{unit} From {esc(st['file'])}.</p>")
     if tab == "mapping":
         if not ff_fin.tb_info(folder, "tb_cy"):
             return "<div class=h>No trial balance yet</div>"
@@ -412,6 +601,14 @@ def _review_tab(folder, tab):
         pend = [r for r in rows if not r["approved"]]
         opts = lambda cur: "".join(f"<option value=\"{h['code']}\" {'selected' if h['code'] == cur else ''}>{esc(h['label'])}</option>" for h in heads)
         trs = []
+        gcy = {x["ledger_name"]: x["group_name"] for x in ff_fin.tb(folder, "tb_cy")}
+        gpy = {x["ledger_name"]: x["group_name"] for x in ff_fin.tb(folder, "tb_py")}
+
+        def grp(r):  # Tally group this year, Tally group last year (marked when the ledger moved group)
+            a, b = gcy.get(r["ledger"], ""), gpy.get(r["ledger"], "")
+            moved = f"<div class=err>Moved group</div>" if a and b and a.lower() != b.lower() else ""
+            return (f"<td>{esc(a) or '<span class=mut>Not in this year</span>'}</td>"
+                    f"<td>{esc(b) or '<span class=mut>Not in last year</span>'}{moved}</td>")
         for r in pend + [r for r in rows if r["approved"]]:
             led = esc(r["ledger"])
             box = "" if r["approved"] else f'<input type=checkbox name=ok value="{led}" checked aria-label=Approve>'
@@ -419,13 +616,15 @@ def _review_tab(folder, tab):
             if r["approved"]:
                 head_ = esc(r["proposed"]["line"] + " - " + r["proposed"]["label"])
             else:
-                head_ = f'<select name="h:{led}" style="max-width:320px" aria-label=Head>{opts(r["proposed"]["code"])}</select>'
+                head_ = f'<select name="h:{led}" style="width:100%;max-width:520px" aria-label=Head>{opts(r["proposed"]["code"])}</select>'
             why = esc(r["source"]) + (": " + esc(r["reason"]) if r["reason"] else "")
-            trs.append(f"<tr><td>{box}</td><td><b>{led}</b><br><span class=mut>{esc(r['group'])}</span>{warn}</td>"
-                       f"<td class=n>{money(r['cy'])}</td><td>{head_}<div class=mut>{why}</div></td></tr>")
+            trs.append(f"<tr><td>{box}</td><td><b>{led}</b>{warn}</td>{grp(r)}"
+                       f"<td class=n>{money(r['cy'])}</td><td class=n>{money(r['py'])}</td><td>{head_}<div class=mut>{why}</div></td></tr>")
         return (f"<form method=post action=/ff/map/approve data-who=need><input type=hidden name=c value=\"{esc(name)}\">"
                 f"<div class=h>{len(pend)} ledgers wait for approval; {len(rows) - len(pend)} are approved or follow Tally's group</div>"
-                f"<table><tr><th></th><th>Ledger</th><th class=n>This year</th><th>Schedule III head</th></tr>{''.join(trs)}</table>"
+                f"<p class=mut style=\"margin:0 0 12px\">Ledgers that are nil in both years are left out. A ledger that is nil this year is listed "
+                f"when it had a balance last year, because last year's column needs its head too.</p>"
+                f"<table><tr><th></th><th>Ledger</th><th>Tally group, this year</th><th>Tally group, last year</th><th class=n>This year</th><th class=n>Last year</th><th>Schedule III head</th></tr>{''.join(trs)}</table>"
                 + (f"<p><button class=sm>Approve ticked heads and rebuild</button></p>" if pend else "") + "</form>")
     if tab == "questions":
         if not app.inputs_path(folder).exists():
@@ -435,6 +634,7 @@ def _review_tab(folder, tab):
             return (f"<div class=h>Questions not prepared yet</div><form method=post action=/ff/prepare><input type=hidden name=c value=\"{esc(name)}\">"
                     f"<button class=sm {'disabled' if not ff_fin.output(folder) else ''}>Prepare questions</button></form>"
                     "<p class=mut>Most answers come pre-filled from last year's forms and Setup.</p>")
+        app.refresh_questions(folder)  # a newer version of the app may ask more (ADT-1 SRN, number of auditors)
         qs, _ = app.questions(folder)
         answered = set(app.load(folder).get("answered") or [])
         trs = []
@@ -445,26 +645,126 @@ def _review_tab(folder, tab):
                     f"<option {'selected' if c.lower() == ans.lower() else ''}>{esc(c)}</option>" for c in [""] + list(opts[0])) + "</select>"
             else:
                 field = f"<input type=text name=\"q_{esc(key)}\" value=\"{esc(ans)}\" placeholder=\"{esc(how)}\" style=\"width:100%\" aria-label=Answer>"
-            t = (tag("Needed", "need") if key in app.MUST and not ans.strip() else tag("Your answer", "good") if key in answered
+            t = (tag("Last year's date", "badt") if _stale(folder, text, how, ans) else
+                 tag("Needed", "need") if key in app.MUST and not ans.strip() else tag("Your answer", "good") if key in answered
                  else tag("Suggested") if ans.strip() else "")
             trs.append(f"<tr><td style=\"width:50%\">{esc(text)}<div class=mut>{esc(how)}</div></td><td>{field}</td><td>{t}</td></tr>")
         return (f"<form method=post action=/ff/answers><input type=hidden name=c value=\"{esc(name)}\">"
-                f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div><table>{''.join(trs)}</table>"
-                f"<p class=row><button class=sm data-busy=Saving>Save answers</button> <a class=mut href=\"/ai/questions?c={q}\">Suggest answers with local AI</a></p></form>")
+                f"<div class=h>What only staff know. Suggestions come from last year's forms and Setup.</div>"
+                f"<p class=row><button class=sm formaction=/ai/run formmethod=post data-busy=Starting>Suggest answers with local AI</button> <button class=sm data-busy=Saving>Save answers</button> "
+                f"<span class=mut>The AI starts at once and is asked only the inputs still blank. Save typed answers first.</span></p>"
+                f"<table>{''.join(trs)}</table>"
+                f"<p class=row><button class=sm data-busy=Saving>Save answers</button></p></form>")
     if tab == "reports":
         ok, why = ff_fin.docs_ready(folder)
         made = ff_fin.docs_list(folder)
         flags = ff_fin.docs_flags(folder)
         lst = "".join(f"<li><a href=\"/ff/report?c={q}&f={quote(n)}\">{esc(n)}</a></li>" for n in made)
         fl = "".join(f"<li>{esc(x)}</li>" for x in flags)
-        return (f"<div class=h>Board's report, auditor's report with CARO, notice, board and members' meeting papers</div>"
+        try:
+            import ff_signed
+            gen = ff_signed.gen_box(folder, sys.modules[__name__])
+        except Exception:  # noqa: BLE001
+            gen = ""
+        return (gen + f"<div class=h>Board's report, auditor's report with CARO, notice, board and members' meeting papers</div>"
                 f"<p>Rolled forward from last year's signed documents and filled from this year's Schedule III, so every figure agrees with the accounts.</p>"
                 + (f"<form method=post action=/ff/docs><input type=hidden name=c value=\"{esc(name)}\"><button class=sm>Draft the documents</button></form>" if ok
                    else f"<p class=mut>Not ready: {esc(why)}. Last year's documents go in <code>financials\\{esc(ff_fin.fy_of(folder))}\\last_year_docs</code> "
                         f"(notice.docx, board report.docx, auditors report.docx, sap.docx, Shareholders list.xlsx, Directors list.xlsx).</p>")
                 + (f"<p><b>Drafted</b></p><ul>{lst}</ul>" if made else "")
-                + (f"<p><b>To check before signing</b></p><ul>{fl}</ul>" if fl else ""))
+                + (f"<p><b>To check before signing</b></p><ul>{fl}</ul>" if fl else "") + _signed_box(folder))
+    if tab == "preview":
+        return _preview(folder)
     return ""
+
+
+SRC_WORD = {"tally": "Tally", "lastyear": "Last year's form", "staff": "Typed by staff", "ai": "Local AI, confirmed by staff", "auto": "Worked out"}
+
+
+def _signed_box(folder):
+    import ff_signed
+    try:  # attachments for MCA: signed set, meeting Excel files, shareholder list, photo (ff_signed.box)
+        return ff_signed.box(folder, sys.modules[__name__])
+    except Exception:  # noqa: BLE001
+        pass
+    st = ff_signed.state(folder)
+    path, note = None, ""
+    try:
+        path, note = ff_signed.attachment(folder, folder / filing_queue.ATTACH_DIR / ff_signed.SLOT)
+    except Exception as e:  # noqa: BLE001
+        note = f"signed PDF could not be read: {str(e)[:80]}"
+    lst = "".join(f"<li>{esc(n)}</li>" for n in st["signed"])
+    bad = "".join(f"<li>{esc(n)}: an MCA form, left out</li>" for n in st["rejected"])
+    return (f"<div class=sec>After signing</div><p>Print or convert the drafts and the financial statements, get them signed, and save the signed PDF in "
+            f"<code>{esc(st['dir'])}</code> (or upload it on the Documents tab). The filing queue attaches it on MCA. "
+            f"Name the files so the order is clear: financial statements, auditor's report, board's report, notice.</p>"
+            + (f"<p><b>In the signed folder</b></p><ul>{lst}{bad}</ul>" if lst or bad else "")
+            + f"<p>{tag('Ready to attach on MCA', 'good') if path else tag('Last page will stay pending', 'need')} <span class=mut>{esc(note)}</span></p>")
+
+
+def _preview(folder):
+    """Every value Form Filler will type on MCA, laid out field by field in form order, with its source in the same box."""
+    try:  # laid out like the MCA form (ff_preview.py); the older list below is the fallback
+        import ff_preview
+        return ff_preview.render(folder, sys.modules[__name__])
+    except Exception:  # noqa: BLE001
+        pass
+    if not app.inputs_path(folder).exists():
+        return "<p class=mut>The form values are prepared after Get data. Nothing to preview yet.</p>"
+    forms = [s for s in (app.load(folder).get("forms") or []) if s in app.SMART]
+    out = ["<div class=h>What will be typed on MCA, and where each value came from</div>"
+           "<p>Read-only. To change a value, correct its source: the mapping, an answer on Inputs for the forms, or the document it was read from. "
+           "Fields the portal fills by itself (company name, auditor details from the ADT-1 SRN) are not listed.</p>"]
+    for n, slug in enumerate(forms):
+        try:
+            rows = ff_audit.chain(folder, slug)["rows"]
+        except Exception as e:  # noqa: BLE001
+            out.append(f"<p class=mut>{FORM_LABEL.get(slug, slug)}: could not read the form values ({esc(str(e))}).</p>")
+            continue
+        # Lines that are nil in every year they have (this year and last year) go to one short list at the end.
+        norm = lambda t: re.sub(r"\s+", " ", re.sub(r"\(?\b(current|previous) reporting period\)?|figures (as at the end of|for the period)|\(in rs\.?\)", "", t, flags=re.I)).strip(" /")
+        is_nil = lambda v: (isinstance(v, (int, float)) and v == 0) or bool(re.fullmatch(r"-?0+(\.0+)?", str(v).strip()))
+        groups = []
+        for r in rows:
+            k = (r.get("section") or "", norm(r["label"]))
+            if groups and groups[-1][0] == k:
+                groups[-1][1].append(r)
+            else:
+                groups.append((k, [r]))
+        once = lambda t: t.split(" / ")[0] if len(set(x.strip() for x in t.split(" / "))) == 1 else t  # "A / A" reads as "A"
+        nil = [(once(k[1] or g[0]["label"]), len(g)) for k, g in groups if all(is_nil(x["value"]) for x in g)]
+        nil_ids = {id(x) for k, g in groups if all(is_nil(x["value"]) for x in g) for x in g}
+        cells, last = [], None
+        for r in rows:
+            if id(r) in nil_ids:
+                continue
+            sec = r.get("section") or ""
+            if sec != last and sec not in ("", "(general)"):
+                cells.append(f"<div style=\"grid-column:1/-1;font-weight:600;margin-top:8px\">{esc(sec)}</div>")
+            last = sec
+            v = r["value"]
+            val = money(v) if isinstance(v, (int, float)) else esc(v)
+            src = SRC_WORD.get(r["category"], r["category"])
+            how = r.get("built") or r.get("picked") or ""
+            cells.append(
+                f"<div><div style=\"margin-bottom:4px\">{esc(r['label'][:110])}</div>"
+                f"<div style=\"border:1px solid var(--line,#d9d9d4);border-radius:6px;padding:8px 10px;background:#fff\">"
+                f"<div style=\"font-weight:600;overflow-wrap:anywhere\">{val if str(val).strip() else '&nbsp;'}</div>"
+                f"<div class=mut style=\"margin-top:4px;overflow-wrap:anywhere\">{esc(src)}{': ' + esc(str(how)[:120]) if how and how != src else ''}</div></div></div>")
+        by = {}
+        for r in rows:
+            by[r["category"]] = by.get(r["category"], 0) + 1
+        mix = ", ".join(f"{c} {SRC_WORD.get(k, k).lower()}" for k, c in by.items())
+        nils = ""
+        if nil:
+            items = "".join(f"<li>{esc(lab[:110])}{' <span class=mut>(both years)</span>' if c > 1 else ''}</li>" for lab, c in nil)
+            nils = (f"<div style=\"margin-top:24px;font-weight:600\">Nil lines: {len(nil_ids)} fields filled with 0</div>"
+                    f"<p class=mut style=\"margin:4px 0 8px\">Zero in every year the form asks for. Read down the list once: anything that should carry an amount is a mapping point.</p>"
+                    f"<ul style=\"margin:0;padding-left:18px;columns:2;column-gap:24px\">{items}</ul>")
+        out.append(f"<details {'open' if n == 0 else ''} style=\"margin-top:16px\"><summary style=\"cursor:pointer;font-weight:600\">"
+                   f"{FORM_LABEL.get(slug, slug)}: {len(rows)} fields <span class=mut style=\"font-weight:400\">({mix})</span></summary>"
+                   f"<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px 24px;margin-top:16px\">{''.join(cells)}</div>{nils}</details>")
+    return "".join(out)
 
 
 # ---------------------------------------------------------------- 3 File on MCA
@@ -493,6 +793,9 @@ def page_file(form="all", msg=""):
             if not j or st == "":
                 why = filing_queue.problems(d.name, s)
                 portal = tag("Ready to file", "good") if not why else tag("Not ready", "need") + "".join(f"<div class=mut>{esc(w)}</div>" for w in why)
+                if not why:
+                    portal += "".join(f"<div class=mut>Last page will stay pending: {esc(t.split('(')[0].strip().lower())} ({esc(n or 'not uploaded')})</div>"
+                                      for _, t, n in filing_queue.pending(d, s))
                 have = filing_queue.attachment_files(d, s)
                 for el, title, must, _ in filing_queue.ATTACH.get(s, []):
                     if el not in have and must:
@@ -512,17 +815,24 @@ def page_file(form="all", msg=""):
                    for k, t in (("all", "All"), ("aoc4", "AOC-4"), ("mgt7a", "MGT-7A")))
     filt += f"<a href=/adt1>{tag('ADT-1 (own list)')}</a><span class=mut>MGT-7 once its form is captured</span>"
     acts = (f"<form method=post action=/ff/queue/pause><button {'disabled' if not running else ''}>Pause</button></form>"
-            f"<form method=post action=/ff/queue/start><button class=p data-busy=Starting>Start filing for all</button></form>")
+            f"<form method=post action=/ff/queue/start class=row style=\"gap:10px;align-items:center\">"
+            f"<label style=\"display:flex;gap:6px;align-items:center\"><input type=checkbox name=auto value=1 {'checked' if Q.get('auto_submit') else ''}>"
+            f"Click Submit by itself when a form is complete</label>"
+            f"<button class=p data-busy=Starting>Start filing for all</button></form>")
+    auto = bool(Q.get("auto_submit"))
     who = """<div class=steps><div><b>Staff</b><span class=mut>Log in and enter the captcha, once a session</span></div>
 <div class=d><b>Form Filler</b><span class=mut>Opens the form, fills each section, attaches the PDFs, saves the draft</span></div>
-<div><b>Staff</b><span class=mut>Review, attach DSC, submit, pay</span></div>
-<div class=d><b>Form Filler</b><span class=mut>Reads the SRN, records it, opens the next client</span></div></div>"""
+<div><b>Staff</b><span class=mut>SUBMITLINE</span></div>
+<div class=d><b>Form Filler</b><span class=mut>SRNLINE</span></div></div>"""
+    who = who.replace("SUBMITLINE", "Attach DSC, check and pay" if auto else "Review, click Submit, attach DSC, pay").replace(
+        "SRNLINE", "Clicks Submit on a form with no gap, reads the SRN, opens the next client" if auto else "Reads the SRN, records it, opens the next client")
     cur = next((j for j in jobs if j["id"] == Q.get("current")), None)
     side = (f"<div class=h>Chrome side panel on mca.gov.in</div>"
             + (f"<p><b>{esc(cur['client'])}</b><br>{FORM_LABEL.get(cur['slug'], cur['slug'])}, filling now</p>" if cur else "<p class=mut>Nothing filling now.</p>")
-            + "<ol style=\"padding-left:18px;margin:0\"><li>Open MCA in the Chrome window started by <code>open_mca_chrome.ps1</code>.</li>"
-              "<li>Log in and enter the captcha.</li><li>Click the MCA filler icon, then <b>Start the queue</b> in the side panel.</li>"
-              "<li>On the last page click Submit yourself. The SRN is read and the next client opens.</li></ol>"
+            + "<ol style=\"padding-left:18px;margin:0\"><li>Open MCA in your own Chrome.</li>"
+              "<li>Log in and enter the captcha.</li><li>Click the Form Filler icon, then <b>Start the queue</b> in the side panel.</li>"
+              + ("<li>The tool clicks Submit after a 10 second countdown (Stop cancels it). The SRN is read and the next client opens.</li></ol>" if auto else
+                 "<li>On the last page click Submit yourself. The SRN is read and the next client opens.</li></ol>") +
               "<p class=mut>It works inside your own Chrome, because MCA blocks automated browsers. Alt+Shift+X stops it.</p>")
     body = (head(f"Step 3 of 3 · {fy_label()}", "File on MCA", acts)
             + f"<div class=filters><span class=mut>Form</span>{filt}</div>"
@@ -545,11 +855,37 @@ def _qbtn(j, act, text):
 
 # ---------------------------------------------------------------- Agent queue
 
-def page_agents(show="all", msg=""):
+QTABS = [("jobs", "Tally and financials"), ("ai", "Local AI"), ("mca", "MCA filing")]
+
+
+def _ai_rows():
+    """Local AI runs: what was sent to the model and what came back."""
+    import ai
+    out = []
+    for r in ai.runs():
+        if r["state"] == "running":
+            st, got = tag("Working", "work"), f"{r['done']} of {r['questions'] or '?'} asked so far"
+        elif r["state"] == "error":
+            st, got = tag("Failed", "badt"), esc(r["error"])[:160]
+        else:
+            st = tag("Answers received", "good")
+            got = f"{r['answered']} of {r['questions']} answered" + (f"; {r['not_used']} last-year dates not used" if r.get("not_used") else "")
+        files = r["files"]
+        sent = (f"{len(files)} document{'s' if len(files) != 1 else ''}<div class=mut>{esc(', '.join(files[:4]))}{' ...' if len(files) > 4 else ''}</div>"
+                if files else "<span class=mut>None</span>")
+        took = f"{r['seconds'] // 60} min {r['seconds'] % 60} s" if r.get("seconds") else ""
+        out.append(f"<tr><td><a href=\"/ai/questions?c={quote(r['client'])}\">{esc(r['client'])}</a></td><td>{when(r['started'])}</td>"
+                   f"<td>{sent}</td><td>{got}</td><td>{esc(r['model'])}<div class=mut>{took}</div></td><td>{st}</td></tr>")
+    return out
+
+
+def page_agents(show="all", msg="", qtab="jobs"):
     A = ff_jobs.load()
     Q = filing_queue.load()
+    if qtab not in dict(QTABS):
+        qtab = "jobs"
     items = []
-    for j in A["jobs"]:
+    for j in A["jobs"] if qtab == "jobs" else []:
         st = {"queued": ("Queued", ""), "working": ("Working", "work"), "staff": ("Staff: " + j["now"][:50], "need"),
               "done": ("Done", "good"), "failed": ("Failed: retry", "badt")}[j["status"]]
         grp = {"queued": "working", "working": "working", "staff": "staff", "done": "done", "failed": "failed"}[j["status"]]
@@ -563,7 +899,7 @@ def page_agents(show="all", msg=""):
         items.append((j.get("updated", ""), grp, f"<tr><td><a href=\"/review?c={quote(j['client'])}\">{esc(j['client'])}</a></td>"
                       f"<td>{ff_jobs.KINDS.get(j['kind'], j['kind'])}</td><td>{esc(j['now'])}</td><td>{when(j.get('started'))}</td>"
                       f"<td>{tag(*st)}{acts}</td></tr>"))
-    for j in Q["jobs"]:
+    for j in Q["jobs"] if qtab == "mca" else []:
         s = j["status"]
         st = {"queued": ("Queued", ""), "filling": ("Working", "work"), "held": ("Failed: retry", "badt"),
               "saved": ("Staff: DSC and submit", "need"), "skipped": ("Skipped", ""),
@@ -576,7 +912,7 @@ def page_agents(show="all", msg=""):
                       f"<td>File {FORM_LABEL.get(j['slug'], j['slug'])}</td><td>{esc(now)}</td><td>{when(j.get('updated'))}</td><td>{tag(*st)}</td></tr>"))
     items.sort(key=lambda x: x[0], reverse=True)
     rows = [h for _, g, h in items if show == "all" or g == show]
-    filt = "".join(f"<a href=\"/agents?show={k}\">{tag(t, 'need' if k == show else '')}</a>"
+    filt = "".join(f"<a href=\"/agents?q={qtab}&show={k}\">{tag(t, 'need' if k == show else '')}</a>"
                    for k, t in (("all", "All"), ("working", "Working"), ("staff", "Waiting for staff"), ("done", "Done"), ("failed", "Failed")))
     log = "".join(f"<div class=log><span class=mut>{when(e['at'])}</span><span><b>{esc(e.get('client', ''))}</b>: {esc(e['text'])}"
                   f"{' · ' + esc(e['by']) if e.get('by') and e.get('by') != 'agent' else ''}</span></div>" for e in ff_audit.activity(40))
@@ -584,15 +920,32 @@ def page_agents(show="all", msg=""):
     acts = (f"<form method=post action=/ff/jobs/act><input type=hidden name=act value=\"{'resume' if paused else 'pause'}\">"
             f"<button>{'Resume' if paused else 'Pause all'}</button></form>"
             f"<form method=post action=/ff/jobs/act><input type=hidden name=act value=clear><button>Clear done</button></form>")
-    working = any(j["status"] in ("queued", "working") for j in A["jobs"]) or Q["running"]
-    body = (head(f"All clients · {fy_label()}" + (" · paused" if paused else ""), "Agent queue", acts)
-            + f"<div class=filters><span class=mut>Show</span>{filt}</div>"
-            + f"""<div class=g12><div class="card s8"><div class=h>One row per job, newest first. Jobs run one after another across the three steps.</div>
-<table><tr><th>Client</th><th>Job</th><th>Now doing</th><th>Started</th><th>Status</th></tr>{''.join(rows) or '<tr><td colspan=5 class=mut>No jobs.</td></tr>'}</table>
-<p class=mut style="margin:12px 0 0">Bold tags are jobs stopped for a person. Clicking a client opens it at the right step.</p></div>
+    ai_rows = _ai_rows()
+    ai_live = any("Working" in r for r in ai_rows)
+    working = any(j["status"] in ("queued", "working") for j in A["jobs"]) or Q["running"] or ai_live
+    n = {"jobs": sum(1 for j in A["jobs"] if j["status"] in ("queued", "working", "staff", "failed") and not
+                     (j["status"] == "staff" and "review point" in (j.get("now") or ""))),
+         "ai": sum(1 for r in ai_rows if "Working" in r),
+         "mca": sum(1 for j in Q["jobs"] if j["status"] in ("queued", "filling", "held"))}
+    tabs = "<nav class=tabs>" + "".join(
+        f"<a href=\"/agents?q={k}\" class=\"{'on' if k == qtab else ''}\">{t}{f' ({n[k]})' if n[k] else ''}</a>" for k, t in QTABS) + "</nav>"
+    if qtab == "ai":
+        table = (f"<div class=h>Every time documents were sent to the local model, and what came back. Nothing leaves the office network.</div>"
+                 f"<table><tr><th>Client</th><th>Sent</th><th>Documents sent</th><th>Answers received</th><th>Model</th><th>Status</th></tr>"
+                 f"{''.join(ai_rows) or '<tr><td colspan=6 class=mut>No runs yet. Start one from a client: Review financials, Documents.</td></tr>'}</table>"
+                 f"<p class=mut style=\"margin:12px 0 0\">Click a client to see each answer with the line it came from. Staff accept answers there; the model saves nothing by itself.</p>")
+    else:
+        what = ("Reading Tally, building Schedule III and drafting documents, one company at a time." if qtab == "jobs"
+                else "Forms being filled on MCA for clients with the verified tick. Staff log in, attach the DSC, submit and pay.")
+        table = (f"<div class=h>{what}</div>"
+                 f"<table><tr><th>Client</th><th>Job</th><th>Now doing</th><th>Started</th><th>Status</th></tr>{''.join(rows) or '<tr><td colspan=5 class=mut>Nothing here.</td></tr>'}</table>"
+                 f"<p class=mut style=\"margin:12px 0 0\">Bold tags are jobs stopped for a person. Clicking a client opens it at the right step.</p>")
+    body = (head(f"All clients · {fy_label()}" + (" · paused" if paused else ""), "Queues", acts if qtab == "jobs" else "") + tabs
+            + (f"<div class=filters><span class=mut>Show</span>{filt}</div>" if qtab != "ai" else "")
+            + f"""<div class="g12 fit"><div class="card s8">{table}</div>
 <div class="card s4"><div class=h>Activity log, newest first</div>{log or '<p class=mut>Nothing yet.</p>'}
 <p class=mut style="margin:12px 0 0">Every line here is also written to that client's audit trail.</p></div></div>""")
-    return shell("Agent queue", body, "/agents", msg, refresh=5 if working else 0)
+    return shell("Queues", body, "/agents", msg, refresh=5 if working else 0)
 
 
 def _pick_form(j):
@@ -666,7 +1019,7 @@ def page_audit(name="", slug="", cat="all", msg=""):
                  else tag(fl["status"].replace("-", " "), "badt" if fl["status"] in ("failed", "manual") else "") if fl else "<span class=mut>Not yet</span>")
         val = money(r["value"]) if isinstance(r["value"], (int, float)) else esc(r["value"])
         trs.append(f"<tr class=\"click{' sel' if i == 0 else ''}\" data-i={rows.index(r)} tabindex=0><td><b>{esc(r['label'][:70])}</b><div class=mut>{esc(r['code'])} · {esc(str(r['section'] or '')[:40])}</div></td>"
-                   f"<td class=n>{val}</td><td>{esc(r['picked'][:90])}</td><td>{esc(r['built'])}</td><td>{fcell}</td></tr>")
+                   f"<td class=n{'' if isinstance(r['value'], (int, float)) or len(str(r['value'])) < 14 else ' style=\"white-space:normal;overflow-wrap:anywhere\"'}>{val}</td><td>{esc(r['picked'][:90])}</td><td>{esc(r['built'])}</td><td>{fcell}</td></tr>")
     v = data.get("verified")
     job = data.get("job") or {}
     ctx = {"tb": data.get("tb") or {}, "fs": data.get("fs"), "verified": v, "srn": job.get("srn"), "jobStatus": job.get("status"),
@@ -726,13 +1079,16 @@ def handle_get(path, query):
     if path in ("/", "/data"):
         return 200, page_data(msg), "text/html"
     if path == "/review":
-        return 200, page_review(q.get("c", ""), q.get("tab", "bs"), msg), "text/html"
+        return 200, page_review(q.get("c", ""), q.get("tab", ""), msg), "text/html"
     if path == "/file":
         return 200, page_file(q.get("form", "all"), msg), "text/html"
     if path == "/agents":
-        return 200, page_agents(q.get("show", "all"), msg), "text/html"
+        return 200, page_agents(q.get("show", "all"), msg, q.get("q", "jobs")), "text/html"
     if path == "/audit":
         return 200, page_audit(q.get("c", ""), q.get("f", ""), q.get("cat", "all"), msg), "text/html"
+    if path == "/partner":  # partner review: time by hand against time by tool (ff_partner.py)
+        import ff_partner
+        return 200, ff_partner.page(msg, q.get("names") == "1"), "text/html"
     if path == "/filings":
         return 200, app.home(msg), "text/html"
     if path == "/ff/api/tally":
@@ -747,7 +1103,7 @@ def handle_get(path, query):
         if path == "/ff/workbook":
             p = ff_fin.output(folder)
         elif path == "/ff/report":
-            p = (folder / "reports" / Path(q.get("f", "")).name)
+            p = (folder / ("for signing" if q.get("d") == "sign" else "reports") / Path(q.get("f", "")).name)
         else:
             p = ff_audit.export(folder, q.get("f", "aoc4"))
         if not p or not p.exists():
@@ -764,6 +1120,9 @@ def handle_post(path, query, body, form):
     user = (form.get("user") or "").strip()
     name = form.get("c") or q.get("c") or ""
     lists = form.get("_lists", {})
+    if path.startswith("/ff/partner/"):
+        import ff_partner
+        return ff_partner.post(path, form, user)
     try:
         if path == "/ff/doc/upload":
             folder = app.folder_of(name)
@@ -809,7 +1168,9 @@ def handle_post(path, query, body, form):
             if not picked:
                 return _back("/data", "Tick at least one client.")
             n = sum(1 for c in picked if ff_jobs.add(app.folder_of(c).name, "get_data", user or "staff"))
-            return _back("/agents", f"{n} client{'s' if n != 1 else ''} queued. The agent reads Tally one company at a time.")
+            if len(picked) == 1:  # one client: stay with that client and watch it arrive
+                return _back("/review", "", c=app.folder_of(picked[0]).name)
+            return _back("/data", f"{n} clients queued. The agent reads Tally one company at a time; the Status column shows each one.")
         if path == "/ff/map/approve":
             folder = app.folder_of(name)
             ok = set(lists.get("ok", []))
@@ -817,6 +1178,11 @@ def handle_post(path, query, body, form):
             n = ff_fin.approve(folder, dec, user)
             ff_jobs.add(folder.name, "build", user)
             return _back("/review", f"{n} heads approved. The financials are being rebuilt (Agent queue).", c=folder.name, tab="mapping")
+        if path == "/ff/setup":
+            folder = app.folder_of(name)
+            ff_fin.set_setup(folder, ff_fin.FV_KEY, form.get("value", ""), user)
+            ff_jobs.add(folder.name, "build", user)
+            return _back("/review", "Face value saved. The financials are being rebuilt (Agent queue).", c=folder.name, tab=q.get("tab") or "bs")
         if path == "/ff/point/clear":
             folder = app.folder_of(name)
             ff_fin.clear_point(folder, form.get("id", ""), user, form.get("note", ""))
@@ -824,8 +1190,18 @@ def handle_post(path, query, body, form):
         if path == "/ff/verify":
             folder = app.folder_of(name)
             ff_fin.verify(folder, user)
+            docs_msg = ""
+            try:  # review blocks are cleared: draft the full set for signing straight away
+                ok, why = ff_fin.docs_ready(folder)
+                if ok:
+                    ff_jobs.add(folder.name, "docs", user or "agent")
+                    docs_msg = " Board's report, Auditor's report and notice are being drafted for signing (Reports and meetings tab)."
+                else:
+                    docs_msg = f" Documents for signing not drafted yet: {why}."
+            except Exception:  # noqa: BLE001
+                pass
             nxt = next((d.name for d in clients() if ff_fin.output(d) and not ff_fin.verified(d)), "")
-            return _back("/review", f"{folder.name} ticked verified, okay to file." + (f" Next: {nxt}." if nxt else " Every client is ticked."), c=nxt or folder.name)
+            return _back("/review", f"{folder.name} ticked verified, okay to file." + docs_msg + (f" Next: {nxt}." if nxt else " Every client is ticked."), c=nxt or folder.name)
         if path == "/ff/unverify":
             folder = app.folder_of(name)
             ff_fin.unverify(folder, user)
@@ -841,6 +1217,25 @@ def handle_post(path, query, body, form):
             m = app.build(folder)
             ff_audit.event(folder, "questions", f"{n} answers saved", by=user or "staff")
             return _back("/review", f"{n} answers saved. {m}", c=folder.name, tab="questions")
+        if path == "/ff/docs/details":
+            import ff_signed
+            folder = app.folder_of(name)
+            try:
+                ff_signed.save_docs(folder, form, user)
+                m = "Details saved. Press Generate financials for signing to draft the reports."
+            except ValueError as e:
+                m = f"Not saved: {e}"
+            return _back("/review", m, c=folder.name, tab="reports")
+        if path == "/ff/docs/generate":
+            import ff_signed
+            folder = app.folder_of(name)
+            d, done, note = ff_signed.generate(folder, user)
+            return _back("/review", f"{len(done)} files saved in {d}. {note}".strip(), c=folder.name, tab="reports")
+        if path == "/ff/docs/open":
+            import ff_signed
+            folder = app.folder_of(name)
+            opened = ff_signed.open_folder(folder)
+            return _back("/review", "Folder opened on the PC that runs Compliance Copilot." if opened else "The folder can be opened only on a Windows PC.", c=folder.name, tab="reports")
         if path == "/ff/docs":
             folder = app.folder_of(name)
             ff_jobs.add(folder.name, "docs", user)
@@ -848,9 +1243,20 @@ def handle_post(path, query, body, form):
         if path == "/ff/queue/start":
             pairs = [(d.name, s) for d in clients() if ff_fin.verified(d) for s in app.load(d).get("forms") or [] if s in app.SMART]
             added, refused = filing_queue.add(pairs)
+            filing_queue.set_auto(form.get("auto") == "1")
             job = filing_queue.start()
-            m = f"{added} form{'s' if added != 1 else ''} added to the queue. "
-            m += ("Now log in on MCA, open the side panel and click Start the queue." if job else "Nothing waiting to file.")
+            inq = [j for j in filing_queue.load()["jobs"] if j["status"] in ("queued", "filling", "held")]
+            if added:
+                m = f"{added} form{'s' if added != 1 else ''} added to the queue. "
+            elif inq:
+                m = (f"Every ticked form is already in the queue ({len(inq)}). They are filled one after another in the same MCA window: "
+                     "the next one opens by itself when you submit the one being filled. ")
+            else:
+                m = "No ticked forms to add. "
+            m += ("Log in on MCA, open the side panel and click Start the queue." if job else "" if inq else "Tick clients on Review financials first.")
+            if job:
+                m += (" Automatic Submit is ON: the tool clicks Submit on a form that filled without a gap. DSC and payment stay with staff."
+                      if form.get("auto") == "1" else " Automatic Submit is off: you click Submit on each form.")
             for c, s, why in refused:
                 m += f"\nNot added, {c} {FORM_LABEL.get(s, s)}: {'; '.join(why)}"
             return _back("/file", m)
@@ -887,7 +1293,7 @@ def handle_post(path, query, body, form):
 
 
 def _page_of(path):
-    if path.startswith(("/ff/map", "/ff/point", "/ff/verify", "/ff/unverify", "/ff/prepare", "/ff/answers", "/ff/docs", "/ff/doc/")):
+    if path.startswith(("/ff/map", "/ff/point", "/ff/setup", "/ff/verify", "/ff/unverify", "/ff/prepare", "/ff/answers", "/ff/docs", "/ff/doc/")):
         return "/review"
     if path.startswith("/ff/queue"):
         return "/file"

@@ -61,6 +61,14 @@ function renderClients() {
     return;
   }
   sel.disabled = false;
+  const qj = info.queue && info.queue.running && info.queue.job;
+  if (qj) {
+    // The queue decides the client: show that one, so the panel never names a client that is not being filled.
+    sel.disabled = true;
+    sel.appendChild(new Option(`${qj.client}  (${qj.form})`, ''));
+    $('clientnote').innerHTML = `The queue is filling <b>${esc(qj.client)}</b> · ${esc(qj.form)}. Check it matches the draft you opened. Pause the queue to fill another client.`;
+    return;
+  }
   const ready = info.clients.filter(c => c.inputs);
   if (!ready.length) {
     const o = document.createElement('option');
@@ -176,14 +184,28 @@ $('values').addEventListener('click', () => run('values'));
 $('stop').addEventListener('click', () => run('stop'));
 
 // ---------- page box mirror ----------
-function showStatus(text) {
+function showStatus(text, buttons) {
   const s = $('status');
   s.className = '';
   s.textContent = text;
+  const row = $('statusbtns');
+  row.innerHTML = '';
+  (buttons || []).forEach((label, index) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (index === 0) b.className = 'first';
+    b.addEventListener('click', async () => {
+      const tab = await activeTab();
+      if (!tab) return;
+      row.innerHTML = '';
+      chrome.tabs.sendMessage(tab.id, { type: 'mcafill-cmd', cmd: 'button', index, label }, () => void chrome.runtime.lastError);
+    });
+    row.appendChild(b);
+  });
 }
 chrome.runtime.onMessage.addListener(msg => {
   if (msg && msg.type === 'mcafill-status') {
-    showStatus(msg.text + (msg.buttons && msg.buttons.length ? '\n\nButtons on the page: ' + msg.buttons.join(' · ') : ''));
+    showStatus(msg.text, msg.buttons);
   }
 });
 

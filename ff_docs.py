@@ -6,6 +6,8 @@
     ly_board       client folder, PDF                          local AI
     ly_auditor     client folder, PDF                          local AI
     ly_docx        financials/<FY>/last_year_docs/, Word       drafting this year's reports
+    dir_list       financials/<FY>/last_year_docs/Directors list.xlsx      drafting this year's reports
+    sh_list        financials/<FY>/last_year_docs/Shareholders list.xlsx   drafting this year's reports
     att_<element>  mca_attachments/<element>/                  the filing queue (MCA attachment)
     other          client folder, PDF                          local AI
 """
@@ -16,10 +18,16 @@ from pathlib import Path
 import app
 import ff_audit
 import ff_fin
+import ff_signed
 import filing_queue
 import lastyear
 
 MAX = 60 * 1024 * 1024
+# kind, file name the report drafting reads, title, why
+LISTS = [("dir_list", "Directors list.xlsx", "Directors list (Excel)",
+          "Names, DINs, designations and dates: goes into the Board's report and the annual return"),
+         ("sh_list", "Shareholders list.xlsx", "Shareholders list for the reports (plain Excel, not the MCA format)",
+          "Names and shares held: used only to draft the Board's report and the list of members. The MCA upload file is the separate MGT-7A row")]
 
 
 def _safe(name):
@@ -44,15 +52,34 @@ def checklist(folder):
     for s in forms:
         have = filing_queue.attachment_files(folder, s)
         for el, title, must, _ in filing_queue.ATTACH.get(s, []):
+            if el == ff_signed.SLOT:
+                slot = folder / filing_queue.ATTACH_DIR / el
+                old = sorted(p for p in slot.glob("*") if p.is_file() and p.name != ff_signed.MERGED) if slot.exists() else []
+                sd = ff_signed.signed_dir(folder)
+                add("signed", "This year's signed set for MCA: financial statements, Auditor's report, Board's report, AGM notice (PDF)",
+                    "The app drafts these; after the directors and the auditor sign, the scanned PDF goes here. Kept in the client's signed folder. One PDF is attached as it is; several are joined in that order. "
+                    "Until it is here, the form is filled and saved up to the last page only",
+                    "must", sorted(p for p in sd.glob("*.pdf") if p.is_file()) + old, multi=True)
+                continue
+            if el == "mgt7a_shareholders":
+                add(f"att_{el}", f"{app.FORM_LABEL.get(s, s)}: List of shareholders (MCA Excel)",
+                    "Same as last year when shareholders did not change: taken from last year's filed MGT-7A. Upload a new file to replace it",
+                    "useful", [have.get(el)], accept=".xlsm,.xlsx")
+                continue
             add(f"att_{el}", f"{app.FORM_LABEL.get(s, s)}: {title}", "Uploaded to MCA by the filing queue",
                 "must" if must else "useful", [have.get(el)], accept=".pdf,.jpg,.jpeg,.png")
+        xl = filing_queue.excel_files(folder, s)
+        for kind, _, _, _, title in filing_queue.XL.get(s, []):
+            add(f"att_{kind}", f"{app.FORM_LABEL.get(s, s)}: {title}",
+                "Prepared by the app from the meeting dates on Inputs for the forms. Upload your own file to replace it",
+                "useful", [xl.get(kind)], accept=".xlsm,.xlsx")
     # last year
     add("ly_aoc4", "Last year's filed AOC-4 (PDF from MCA)",
         "Last year's figures are tied out against it; signatories and auditor carry forward; the local AI reads it",
         "must" if "aoc4" in forms else "useful", [lastyear.find_last_aoc4(folder)])
     add("ly_mgt7", "Last year's filed MGT-7 / MGT-7A (PDF from MCA)",
         "Shareholding, directors and meetings carry forward; the local AI reads it",
-        "must" if "mgt7a" in forms else "useful", [lastyear.find_last_mgt7a(folder)] + _root_pdfs(folder, r"mgt[-_ ]?7(?!a)"))
+        "must" if "mgt7a" in forms else "useful", list(dict.fromkeys([lastyear.find_last_mgt7a(folder)] + _root_pdfs(folder, r"mgt[-_ ]?7(?!a)"))))
     add("ly_board", "Last year's Board's report (PDF)", "The local AI reads it for dates, meetings and directors",
         "useful", _root_pdfs(folder, r"board"), multi=True)
     add("ly_auditor", "Last year's Auditor's report and CARO (PDF)", "The local AI reads it for the auditor's details",
@@ -61,6 +88,8 @@ def checklist(folder):
     add("ly_docx", "Last year's signed Word files: Board's report, Auditor's report, notice",
         "This year's reports are drafted from them", "useful",
         sorted(p for p in d.glob("*.doc*") if p.is_file()), multi=True, accept=".docx,.doc")
+    for kind, fname, title, why in LISTS:
+        add(kind, title, why, "useful", [d / fname if (d / fname).exists() else None], accept=".xlsx")
     known = {f for r in rows for f in r["files"]}
     add("other", "Other supporting documents (PDF)", "Anything else the local AI should read: minutes, registers, letters",
         "useful", [p for p in sorted(folder.glob("*.pdf")) if p not in known], multi=True)
@@ -78,7 +107,24 @@ def upload(folder, kind, filename, data, user=""):
     filename = _safe(filename)
     ext = Path(filename).suffix.lower()
     label = next((r["title"] for r in checklist(folder) if r["kind"] == kind), kind)
-    if kind.startswith("att_"):
+    if kind.startswith("signed_"):
+        if ext != ".pdf":
+            raise ValueError("expected the signed PDF")
+        dest = ff_signed.store_slot(folder, kind[7:], data)
+        label = "Signed " + dest.stem
+    elif kind == "signed":
+        if ext != ".pdf":
+            raise ValueError("expected the signed PDF")
+        if re.search(r"aoc[-_ ]?4|mgt[-_ ]?7", filename, re.I):
+            raise ValueError("this looks like an MCA form: the signed financial statements and reports go here")
+        dest = ff_signed.signed_dir(folder) / filename
+        if dest.exists():
+            app._move_aside(folder, dest)
+        dest.write_bytes(data)
+        if ff_signed.is_mca_form(dest):
+            app._move_aside(folder, dest)
+            raise ValueError("this PDF is an MCA form (for example last year's AOC-4), not the signed financial statements: it was not kept")
+    elif kind.startswith("att_"):
         dest = filing_queue.store_attachment(folder, kind[4:], filename, data)
     elif kind == "ly_aoc4":
         dest = folder / app.upload(folder.name, "ly_aoc4", filename, data)["saved"]
@@ -100,6 +146,13 @@ def upload(folder, kind, filename, data, user=""):
         if kind == "other" and re.search(r"aoc[-_ ]?4|mgt[-_ ]?7", filename, re.I):
             raise ValueError("this looks like a filed form: use the last year's AOC-4 / MGT-7 row instead")
         dest = folder / filename
+        if dest.exists():
+            app._move_aside(folder, dest)
+        dest.write_bytes(data)
+    elif kind in ("dir_list", "sh_list"):
+        if ext != ".xlsx":
+            raise ValueError("expected an Excel file (.xlsx)")
+        dest = ff_fin.ly_docs_dir(folder) / next(x[1] for x in LISTS if x[0] == kind)
         if dest.exists():
             app._move_aside(folder, dest)
         dest.write_bytes(data)
